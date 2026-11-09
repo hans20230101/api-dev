@@ -1,0 +1,7 @@
+教研postman工具核心功能
+
+桌面应用，技术栈：wails2+vue3+sqlite
+
+数据库文件存储目录“db/data.db”
+
+winget install NSIS.NSIS
