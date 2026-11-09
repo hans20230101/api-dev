@@ -1,0 +1,12 @@
+[
+  {
+    "identifier": "default",
+    "description": "默认窗口能力：允许核心事件、窗口操作、保存文件对话框与文件写入",
+    "windows": ["main"],
+    "permissions": [
+      "core:default",
+      "dialog:allow-save",
+      "fs:allow-write-text-file"
+    ]
+  }
+]

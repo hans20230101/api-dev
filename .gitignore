@@ -1,0 +1,9 @@
+build/bin
+node_modules
+frontend/dist
+src-tauri/target
+.build-tmp
+.esbuild-tmp
+.probe-cargo
+.probe-cargo-home
+.playwright-mcp
