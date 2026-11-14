@@ -4,15 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "cross-env TMP=./.build-tmp TEMP=./.build-tmp TMPDIR=./.build-tmp vite",
-    "build": "cross-env TMP=./.build-tmp TEMP=./.build-tmp TMPDIR=./.build-tmp vue-tsc --noEmit && cross-env TMP=./.build-tmp TEMP=./.build-tmp TMPDIR=./.build-tmp vite build",
+    "dev": "cross-env TMP=E:/ai-test/api-dev/.build-tmp TEMP=E:/ai-test/api-dev/.build-tmp TMPDIR=E:/ai-test/api-dev/.build-tmp vite",
+    "build": "cross-env TMP=E:/ai-test/api-dev/.build-tmp TEMP=E:/ai-test/api-dev/.build-tmp TMPDIR=E:/ai-test/api-dev/.build-tmp vue-tsc --noEmit && cross-env TMP=E:/ai-test/api-dev/.build-tmp TEMP=E:/ai-test/api-dev/.build-tmp TMPDIR=E:/ai-test/api-dev/.build-tmp vite build",
+    "tauri:build": "cross-env TMP=E:/ai-test/api-dev/.build-tmp TEMP=E:/ai-test/api-dev/.build-tmp TMPDIR=E:/ai-test/api-dev/.build-tmp tauri build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
     "@tauri-apps/api": "^2.12.4",
     "@tauri-apps/plugin-dialog": "^2.8.4",
-    "@tauri-apps/plugin-fs": "^2.7.1",
     "element-plus": "^2.8.0",
     "pinia": "^2.2.0",
     "vue": "^3.5.0"

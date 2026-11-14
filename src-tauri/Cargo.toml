@@ -1,6 +1,6 @@
 [package]
 name = "api-dev"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
@@ -11,14 +11,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["tray-icon", "image-ico"] }
+tauri = { version = "2", features = ["tray-icon", "image-ico", "image-png", "devtools"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
-reqwest = { version = "0.12", features = ["blocking", "json", "gzip", "brotli", "deflate"] }
+reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "multipart"] }
+tokio-util = "0.7"
 url = "2"
 chrono = "0.4"
 

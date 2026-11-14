@@ -64,6 +64,7 @@ export const useCollectionStore = defineStore('collection', {
         headers: [],
         params: [],
         body_type: 'none',
+        raw_content_type: 'text',
         body: '',
         tests_script: '',
       }

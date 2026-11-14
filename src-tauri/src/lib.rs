@@ -5,9 +5,9 @@ mod models;
 mod repository;
 
 use tauri::{
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -22,6 +22,9 @@ pub fn run() {
                 let _ = window.set_focus();
             }
         }))
+        .on_menu_event(|app, event| {
+            handle_menu_event(app, event.id.as_ref());
+        })
         .invoke_handler(tauri::generate_handler![
             commands::list_collections,
             commands::create_collection,
@@ -41,17 +44,20 @@ pub fn run() {
             commands::save_variable,
             commands::delete_variable,
             commands::send_request,
+            commands::cancel_request,
             commands::save_response_body,
             commands::run_collection,
             commands::export_all,
             commands::export_collection,
             commands::write_export_file,
             commands::import_all,
+            commands::sync_theme_checks,
         ])
         .setup(|app| {
             commands::setup(app)?;
             create_main_window(app)?;
             setup_tray(app)?;
+            setup_menu(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -65,7 +71,61 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// 设置系统托盘：左键单击显示主窗口，右键菜单支持显示/退出
+/// 顶层原生菜单栏：「文件」(新建集合/导入集合/退出)、「设置」(主题/调试)、「帮助」(关于)。
+/// 动作类菜单项通过 `menu://` 事件转发给前端执行；主题项为勾选项，
+/// 前端每次切换主题后调用 sync_theme_checks 命令同步勾选状态。
+fn setup_menu(app: &tauri::App) -> tauri::Result<()> {
+    let new_collection = MenuItem::with_id(app, "menu://new-collection", "➕ 新建集合", true, None::<&str>)?;
+    let import_collection = MenuItem::with_id(app, "menu://import-collection", "📂 导入集合", true, None::<&str>)?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let quit = MenuItem::with_id(app, "menu://quit", "🚪 退出", true, None::<&str>)?;
+    let file_menu = Submenu::with_id(app, "file", "📁 文件", true)?;
+    file_menu.append_items(&[&new_collection, &import_collection, &separator, &quit])?;
+
+    // 主题：三个互斥勾选项，id 尾部与前端 ThemeMode 值一致
+    let theme_light = CheckMenuItem::with_id(app, "menu://theme-light", "☀ 白天", true, false, None::<&str>)?;
+    let theme_dark = CheckMenuItem::with_id(app, "menu://theme-dark", "🌙 黑夜", true, false, None::<&str>)?;
+    let theme_system = CheckMenuItem::with_id(app, "menu://theme-system", "🖥 随系统", true, true, None::<&str>)?;
+    let theme_menu = Submenu::with_id(app, "theme", "🎨 主题", true)?;
+    theme_menu.append_items(&[&theme_light, &theme_dark, &theme_system])?;
+
+    // 调试：打开/关闭 WebView 前端 F12 调试界面
+    let debug_item = MenuItem::with_id(app, "menu://debug", "🛠 调试", true, None::<&str>)?;
+    let settings_menu = Submenu::with_id(app, "settings", "⚙ 设置", true)?;
+    settings_menu.append_items(&[&theme_menu, &debug_item])?;
+
+    let about = MenuItem::with_id(app, "menu://about", "ℹ 关于", true, None::<&str>)?;
+    let help_menu = Submenu::with_id(app, "help", "❓ 帮助", true)?;
+    help_menu.append_items(&[&about])?;
+
+    let menu = Menu::with_items(app, &[&file_menu, &settings_menu, &help_menu])?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
+/// 菜单事件分发：menu:// 前缀的动作转发前端；退出/调试在后端直接处理
+fn handle_menu_event(app: &tauri::AppHandle, id: &str) {
+    match id {
+        "menu://quit" => app.exit(0),
+        "menu://debug" => {
+            if let Some(win) = app.get_webview_window("main") {
+                if win.is_devtools_open() {
+                    win.close_devtools();
+                } else {
+                    win.open_devtools();
+                }
+            }
+        }
+        // 主题切换由前端 setMode 处理（含持久化），随后回调 sync_theme_checks
+        "menu://theme-light" | "menu://theme-dark" | "menu://theme-system" => {
+            let mode = id.trim_start_matches("menu://theme-");
+            let _ = app.emit("menu://theme", mode);
+        }
+        _ => {
+            let _ = app.emit("menu://action", id);
+        }
+    }
+}
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let show = MenuItem::with_id(app, "show", "显示主窗口", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;

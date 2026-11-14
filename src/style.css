@@ -6,6 +6,24 @@
   --muted: #909399;
 }
 
+/* 黑夜主题：覆盖应用变量 + 启用 Element Plus 暗色变量（main.ts 中引入了其 dark/css-vars.css） */
+html.dark {
+  --border: #414243;
+  --bg: #1d1e1f;
+  --panel: #141414;
+  --text: #e5eaf3;
+  --muted: #a3a6ad;
+}
+
+html.dark .panel-title { background: #1d1e1f; }
+html.dark .env-item:hover { background: #303133; }
+html.dark .env-item.active { background: #1d3a5f; }
+html.dark .body-toolbar { background: #1d1e1f; border-color: var(--border); }
+
+/* 滚动条：暗色下用深灰 */
+html.dark ::-webkit-scrollbar-thumb { background: #58585b; }
+html.dark ::-webkit-scrollbar-thumb:hover { background: #6e6e72; }
+
 * { box-sizing: border-box; }
 
 html, body, #app {
@@ -45,13 +63,56 @@ html, body, #app {
 
 .sidebar {
   width: 260px;
-  flex: 0 0 260px;
+  flex: 0 0 auto;
   border-right: 1px solid var(--border);
   background: var(--panel);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  transition: width 0.25s ease, border-right-width 0.25s ease;
 }
+
+/* 折叠时收窄为 0，内容靠 min-width 保持不挤压 */
+.sidebar-wrap.collapsed .sidebar { width: 0; border-right-width: 0; }
+.sidebar > * { min-width: 259px; }
+
+.sidebar-wrap {
+  position: relative;
+  display: flex;
+  overflow: visible;
+  flex: 0 0 auto;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  transform: translateY(-50%) translateX(-50%);
+  z-index: 10;
+  width: 18px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sidebar-toggle:hover {
+  color: #409eff;
+  border-color: #b3d8ff;
+  background: #ecf5ff;
+  box-shadow: 0 1px 6px rgba(64, 158, 255, 0.25);
+}
+
+.sidebar-toggle .el-icon { transition: transform 0.2s ease; }
 
 .workspace {
   flex: 1 1 auto;

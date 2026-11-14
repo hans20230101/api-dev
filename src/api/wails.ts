@@ -75,6 +75,10 @@ export function SendRequest(request: models.Request): Promise<models.Response> {
   return invoke('send_request', { request })
 }
 
+export function CancelRequest(requestId: number): Promise<boolean> {
+  return invoke('cancel_request', { requestId })
+}
+
 export function SaveResponseBody(bodyId: number, path: string): Promise<void> {
   return invoke('save_response_body', { bodyId, path })
 }
@@ -97,6 +101,10 @@ export function WriteExportFile(path: string, content: string): Promise<void> {
 
 export function ImportAll(jsonStr: string): Promise<void> {
   return invoke('import_all', { jsonStr })
+}
+
+export function SyncThemeChecks(mode: string): Promise<void> {
+  return invoke('sync_theme_checks', { mode })
 }
 
 export type { models } from './models'

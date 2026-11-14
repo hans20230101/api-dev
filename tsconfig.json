@@ -12,7 +12,8 @@
     "esModuleInterop": true,
     "lib": [
       "ESNext",
-      "DOM"
+      "DOM",
+      "DOM.Iterable"
     ],
     "skipLibCheck": true,
     "baseUrl": ".",

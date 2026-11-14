@@ -4,12 +4,15 @@ use crate::repository::{env_repo, request_repo};
 use std::collections::{HashMap, VecDeque};
 use std::sync::Mutex;
 use tauri::{Manager, State};
+use tokio_util::sync::CancellationToken;
 
 pub struct AppState {
     pub db: Mutex<Db>,
     pub data_dir: std::path::PathBuf,
     /// 最近响应的原始字节缓存，供「保存文件」写入磁盘
     pub response_cache: Mutex<ResponseCache>,
+    /// 进行中请求的取消令牌：按请求 id 注册，取消时触发中断
+    pub cancel_tokens: Mutex<HashMap<i64, CancellationToken>>,
 }
 
 type Guard<'a> = std::sync::MutexGuard<'a, Db>;
@@ -181,12 +184,46 @@ pub fn delete_variable(state: State<AppState>, id: i64) -> Result<(), String> {
 
 // ===== 发送与测试 =====
 
-/// 发送单个请求（自动使用当前激活环境的变量）
+/// 发送单个请求（自动使用当前激活环境的变量）。
+/// 异步命令：发送期间可通过 [`cancel_request`] 中断，返回 error 为「请求已取消」的响应。
 #[tauri::command]
-pub fn send_request(state: State<AppState>, request: Request) -> Result<Response, String> {
-    let guard = db_lock(&state)?;
-    let vars = env_repo::get_active_variables(&guard.0)?;
-    let (mut resp, bytes) = client::send(&request, &vars);
+pub async fn send_request(
+    state: State<'_, AppState>,
+    request: Request,
+) -> Result<Response, String> {
+    // MutexGuard 不能跨 await，取变量后在作用域内释放
+    let vars = {
+        let guard = db_lock(&state)?;
+        env_repo::get_active_variables(&guard.0)?
+    };
+
+    let token = CancellationToken::new();
+    {
+        let mut tokens = state
+            .cancel_tokens
+            .lock()
+            .map_err(|e| format!("取消令牌锁错误: {e}"))?;
+        tokens.insert(request.id, token.clone());
+    }
+
+    // 取消即丢弃进行中的请求 Future（断开连接），返回占位响应
+    let (mut resp, bytes) =
+        match token
+            .run_until_cancelled(client::send_async(&request, &vars))
+            .await
+        {
+            Some(result) => result,
+            None => (client::cancelled_response(), Vec::new()),
+        };
+
+    {
+        let mut tokens = state
+            .cancel_tokens
+            .lock()
+            .map_err(|e| format!("取消令牌锁错误: {e}"))?;
+        tokens.remove(&request.id);
+    }
+
     if resp.error.is_none() {
         let mut cache = state
             .response_cache
@@ -195,6 +232,25 @@ pub fn send_request(state: State<AppState>, request: Request) -> Result<Response
         resp.body_id = Some(cache.insert(bytes));
     }
     Ok(resp)
+}
+
+/// 取消进行中的请求；请求已完成或不存在时返回 false
+#[tauri::command]
+pub fn cancel_request(state: State<AppState>, request_id: i64) -> Result<bool, String> {
+    let token = {
+        let tokens = state
+            .cancel_tokens
+            .lock()
+            .map_err(|e| format!("取消令牌锁错误: {e}"))?;
+        tokens.get(&request_id).cloned()
+    };
+    Ok(match token {
+        Some(t) => {
+            t.cancel();
+            true
+        }
+        None => false,
+    })
 }
 
 /// 将缓存的响应原始字节写入用户选择的文件（后端写文件无路径权限限制）
@@ -214,7 +270,7 @@ pub fn save_response_body(
             None => return Err("响应内容已失效，请重新发送请求后再保存".to_string()),
         }
     };
-    std::fs::write(&path, bytes).map_err(|e| format!("写入文件失败: {e}"))
+    std::fs::write(&path, bytes).map_err(|e| format!("写入文件失败 {}: {e}", path))
 }
 
 /// 批量运行某集合下全部请求并返回测试结果
@@ -301,7 +357,52 @@ pub fn import_all(state: State<AppState>, json_str: String) -> Result<(), String
 /// 将导出的 JSON 写入用户通过保存对话框选择的文件（后端写文件无路径权限限制）
 #[tauri::command]
 pub fn write_export_file(path: String, content: String) -> Result<(), String> {
-    std::fs::write(&path, content).map_err(|e| format!("写入文件失败: {e}"))
+    std::fs::write(&path, content).map_err(|e| format!("写入文件失败 {}: {e}", path))
+}
+
+/// 前端切换主题后，同步原生菜单「设置→主题」三个勾选项的勾选状态
+#[tauri::command]
+pub fn sync_theme_checks(app: tauri::AppHandle, mode: String) -> Result<(), String> {
+    let Some(menu) = app.menu() else {
+        return Ok(()); // 无菜单（异常场景）时静默
+    };
+    // 注意：Menu::get 只匹配顶层子项，不递归子菜单；
+    // 主题项位于「设置→主题」子菜单，必须递归查找才能设置勾选（保证互斥单选）
+    let root = menu.items().map_err(|e| e.to_string())?;
+    for (suffix, item_id) in [
+        ("light", "menu://theme-light"),
+        ("dark", "menu://theme-dark"),
+        ("system", "menu://theme-system"),
+    ] {
+        if let Some(item) = find_check_menu_item(&root, item_id) {
+            let _ = item.set_checked(mode == suffix);
+        }
+    }
+    Ok(())
+}
+
+/// 递归查找菜单里指定 id 的勾选项（跨「设置→主题」等子菜单层级）
+fn find_check_menu_item(
+    items: &[tauri::menu::MenuItemKind<tauri::Wry>],
+    id: &str,
+) -> Option<tauri::menu::CheckMenuItem<tauri::Wry>> {
+    for kind in items {
+        match kind {
+            tauri::menu::MenuItemKind::Submenu(sub) => {
+                let sub_items = sub.items().ok()?;
+                if let Some(found) = find_check_menu_item(&sub_items, id) {
+                    return Some(found);
+                }
+            }
+            tauri::menu::MenuItemKind::Check(item) => {
+                if item.id().as_ref() == id {
+                    return Some(item.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 use crate::httpclient::{client, testrunner};
@@ -316,6 +417,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         db: Mutex::new(db),
         data_dir,
         response_cache: Mutex::new(ResponseCache::new()),
+        cancel_tokens: Mutex::new(HashMap::new()),
     });
     Ok(())
 }

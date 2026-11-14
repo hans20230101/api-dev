@@ -8,6 +8,8 @@ import { ExportAll, ExportCollection, WriteExportFile } from '@/api/wails'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Upload, CopyDocument } from '@element-plus/icons-vue'
 
+const emit = defineEmits<{ (e: 'import'): void }>()
+
 interface TreeNode {
   key: string
   name: string
@@ -159,20 +161,6 @@ function onCommand(cmd: string, node: TreeNode) {
   }
 }
 
-async function exportSelected() {
-  const id = store.selectedCollectionId
-  const node = id == null ? undefined : treeData.value.find(n => n.kind === 'collection' && n.id === id)
-  if (!node) {
-    ElMessage.warning('请先选择一个集合')
-    return
-  }
-  if (node.parentId != null) {
-    ElMessage.warning('只有顶层集合才支持导出')
-    return
-  }
-  await exportNode(node)
-}
-
 async function exportAll() {
   try {
     const json = await ExportAll()
@@ -193,7 +181,7 @@ function onHeaderCommand(cmd: string) {
   if (cmd === 'add-collection') addCollection(null)
   else if (cmd === 'add-request') addRequest(store.selectedCollectionId)
   else if (cmd === 'export-all') exportAll()
-  else if (cmd === 'export-selected') exportSelected()
+  else if (cmd === 'import-collection') emit('import')
 }
 
 function isActive(node: TreeNode) {
@@ -219,7 +207,7 @@ function isActive(node: TreeNode) {
             <el-dropdown-item command="add-request">
               <el-icon><DocumentAdd /></el-icon>新建请求
             </el-dropdown-item>
-            <el-dropdown-item command="export-selected" divided>
+            <el-dropdown-item command="import-collection" divided>
               <el-icon><Upload /></el-icon>导入集合
             </el-dropdown-item>
           </el-dropdown-menu>

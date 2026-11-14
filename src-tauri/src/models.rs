@@ -5,6 +5,9 @@ pub struct Kv {
     pub key: String,
     pub value: String,
     pub enable: bool,
+    /// form-data 行是否为文件项（value 存文件路径），旧数据无此字段时默认 None
+    #[serde(default)]
+    pub file: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,14 +20,31 @@ pub struct Request {
     pub headers: Vec<Kv>,
     pub params: Vec<Kv>,
     pub body_type: String,
+    /// 当前类型（form-data 或未隔离类型）的活动数据；json/form/raw 的内容存于专用字段
     pub body: String,
+    /// json 类型的请求体（按类型隔离）
+    #[serde(default)]
+    pub body_json: String,
+    /// form 类型的请求体（KV 数组 JSON，按类型隔离）
+    #[serde(default)]
+    pub body_form: String,
+    /// raw 类型的请求体（按类型隔离）
+    #[serde(default)]
+    pub body_raw: String,
+    /// raw 类型的内容格式（text/json/xml/html/javascript），决定发送时的 Content-Type
+    #[serde(default = "default_raw_content_type")]
+    pub raw_content_type: String,
     pub tests_script: String,
     pub created_at: Option<String>,
 }
 
+/// raw 请求体默认按纯文本发送（旧数据无此字段时使用）
+fn default_raw_content_type() -> String {
+    "text".to_string()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Collection {
-    pub id: i64,
+pub struct Collection {    pub id: i64,
     pub parent_id: Option<i64>,
     pub name: String,
     pub created_at: Option<String>,

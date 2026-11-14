@@ -1,13 +1,22 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useEnvironmentStore } from '@/stores/environment'
+import { useThemeStore, type ThemeMode } from '@/stores/theme'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Check, Delete, Edit, Moon, Monitor, Sunny } from '@element-plus/icons-vue'
 import { models } from '@/api/wails'
 
 const store = useEnvironmentStore()
+const theme = useThemeStore()
 const mgrVisible = ref(false)
 const newVarKey = ref('')
 const newVarValue = ref('')
+
+const themeOptions: { value: ThemeMode; label: string }[] = [
+  { value: 'light', label: '白天' },
+  { value: 'dark', label: '黑夜' },
+  { value: 'system', label: '随系统' },
+]
 
 onMounted(() => store.load())
 
@@ -70,6 +79,25 @@ defineEmits<{ (e: 'import'): void }>()
       <el-option v-for="e in store.environments" :key="e.id" :label="e.name" :value="e.id" />
     </el-select>
     <el-button size="small" @click="mgrVisible = true">环境管理</el-button>
+    <el-dropdown trigger="click" @command="(m: ThemeMode) => theme.setMode(m)">
+      <el-button size="small" link :title="`主题：${themeOptions.find(o => o.value === theme.mode)?.label}`">
+        <el-icon style="font-size: 16px;">
+          <Moon v-if="theme.effectiveDark" />
+          <Sunny v-else />
+        </el-icon>
+      </el-button>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item v-for="o in themeOptions" :key="o.value" :command="o.value">
+            <span style="display: inline-flex; align-items: center; gap: 6px;">
+              <el-icon><Moon v-if="o.value === 'dark'" /><Monitor v-else-if="o.value === 'system'" /><Sunny v-else /></el-icon>
+              <span>{{ o.label }}</span>
+              <el-icon v-if="theme.mode === o.value" style="margin-left: 8px;"><Check /></el-icon>
+            </span>
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
     <el-dialog v-model="mgrVisible" title="环境与变量管理" width="680px">
       <div style="display: flex; gap: 16px;">
         <div style="width: 220px; border-right: 1px solid var(--border); padding-right: 12px;">
@@ -80,8 +108,12 @@ defineEmits<{ (e: 'import'): void }>()
           <div v-for="e in store.environments" :key="e.id" class="env-item" :class="{ active: store.activeEnvId === e.id }">
             <span @click="store.setActive(e.id)">{{ e.name }}</span>
             <span class="ops">
-              <el-button size="small" link @click="renameEnv(e.id, e.name)">改</el-button>
-              <el-button size="small" link @click="store.remove(e.id)">删</el-button>
+              <el-button size="small" link title="重命名" @click="renameEnv(e.id, e.name)">
+                <el-icon><Edit /></el-icon>
+              </el-button>
+              <el-button size="small" link type="danger" title="删除" @click="store.remove(e.id)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </span>
           </div>
           <div v-if="!store.environments.length" class="empty">暂无环境</div>
@@ -97,8 +129,12 @@ defineEmits<{ (e: 'import'): void }>()
             <div v-for="v in store.variables" :key="v.id" class="kv-row">
               <el-input v-model="v.key" size="small" style="width: 140px;" />
               <el-input v-model="v.value" size="small" style="width: 220px;" />
-              <el-button size="small" link @click="store.saveVariable(v)">存</el-button>
-              <el-button size="small" link @click="store.removeVariable(v.id)">删</el-button>
+              <el-button size="small" link title="保存修改" @click="store.saveVariable(v)">
+                <el-icon><Check /></el-icon>
+              </el-button>
+              <el-button size="small" link type="danger" title="删除" @click="store.removeVariable(v.id)">
+                <el-icon><Delete /></el-icon>
+              </el-button>
             </div>
             <div v-if="!store.variables.length" class="empty">暂无变量，使用 <code v-pre>{{key}}</code> 在 URL/头/体中引用</div>
           </template>

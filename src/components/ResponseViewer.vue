@@ -21,6 +21,15 @@ const sending = computed(() => {
   return id != null && runtime.sending(id)
 })
 
+// 是否属于「下载型」接口：响应为二进制、带 Content-Disposition 文件名、
+// 或请求名称含「下载」—— 只有这类接口才显示「保存文件」按钮
+const isDownload = computed(() => {
+  const resp = response.value
+  if (!resp) return false
+  if (resp.is_binary || resp.filename) return true
+  return (tabs.activeTab?.name ?? '').includes('下载')
+})
+
 // Content-Type 对应的默认扩展名
 const MIME_EXT: Record<string, string> = {
   'application/json': 'json',
@@ -113,7 +122,14 @@ async function saveFile() {
           <span>耗时 {{ response.time_ms }} ms</span>
           <span>响应大小 {{ response.resp_size }} B</span>
           <span>请求大小 {{ response.req_size }} B</span>
-          <el-button size="small" type="primary" plain style="margin-left: auto;" @click="saveFile">
+          <el-button
+            v-if="isDownload"
+            size="small"
+            type="primary"
+            plain
+            style="margin-left: auto;"
+            @click="saveFile"
+          >
             保存文件
           </el-button>
         </div>

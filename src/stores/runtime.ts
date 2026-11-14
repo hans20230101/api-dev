@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { SendRequest, RunCollection, models } from '@/api/wails'
+import { SendRequest, CancelRequest, RunCollection, models } from '@/api/wails'
 
 export const useRuntimeStore = defineStore('runtime', {
   state: () => ({
@@ -20,6 +20,14 @@ export const useRuntimeStore = defineStore('runtime', {
         this.responses[req.id] = await SendRequest(req)
       } finally {
         this.sendingIds = this.sendingIds.filter(x => x !== req.id)
+      }
+    },
+    // 取消进行中的请求：后端断开连接并以「请求已取消」响应返回
+    async cancel(id: number) {
+      try {
+        await CancelRequest(id)
+      } catch {
+        // 请求恰好已完成时无需处理
       }
     },
     async runCollection(collectionId: number) {
