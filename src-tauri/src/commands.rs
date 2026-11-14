@@ -336,21 +336,66 @@ pub fn export_collection(state: State<AppState>, collection_id: i64) -> Result<S
     serde_json::to_string_pretty(&data).map_err(|e| e.to_string())
 }
 
-/// 从 JSON 字符串导入数据（按现有结构重建，变量随环境重建后 ID 变化暂不迁移）
+/// 从 JSON 字符串导入数据：重建集合/请求/环境/变量并重新映射 ID 关系
 #[tauri::command]
 pub fn import_all(state: State<AppState>, json_str: String) -> Result<(), String> {
     let data: ExportData =
         serde_json::from_str(&json_str).map_err(|e| format!("JSON 解析失败: {e}"))?;
     let guard = db_lock(&state)?;
-    for c in &data.collections {
-        env_repo::create_collection(&guard.0, &c.name, c.parent_id)?;
+
+    // 1) 集合：按父子依赖顺序创建，建立 旧ID -> 新ID 映射
+    let mut coll_map: HashMap<i64, i64> = HashMap::new();
+    let mut pending = data.collections;
+    while !pending.is_empty() {
+        let mut progressed = false;
+        let mut next = Vec::new();
+        for c in pending {
+            let ready = c.parent_id.map_or(true, |pid| coll_map.contains_key(&pid));
+            if ready {
+                let new_parent = c.parent_id.and_then(|pid| coll_map.get(&pid).copied());
+                let created = env_repo::create_collection(&guard.0, &c.name, new_parent)?;
+                coll_map.insert(c.id, created.id);
+                progressed = true;
+            } else {
+                next.push(c);
+            }
+        }
+        if !progressed {
+            // 存在无法解析的父级引用时，作为顶层集合导入以避免数据丢失
+            for c in next {
+                let created = env_repo::create_collection(&guard.0, &c.name, None)?;
+                coll_map.insert(c.id, created.id);
+            }
+            break;
+        }
+        pending = next;
     }
-    for r in &data.requests {
-        request_repo::save_request(&guard.0, r.clone())?;
-    }
+
+    // 2) 环境：建立 旧ID -> 新ID 映射
+    let mut env_map: HashMap<i64, i64> = HashMap::new();
     for e in &data.environments {
-        env_repo::create_environment(&guard.0, &e.name)?;
+        let created = env_repo::create_environment(&guard.0, &e.name)?;
+        env_map.insert(e.id, created.id);
     }
+
+    // 3) 变量：映射到新环境 ID 后插入
+    for v in &data.variables {
+        if let Some(&new_env_id) = env_map.get(&v.environment_id) {
+            let mut nv = v.clone();
+            nv.id = 0;
+            nv.environment_id = new_env_id;
+            env_repo::save_variable(&guard.0, nv)?;
+        }
+    }
+
+    // 4) 请求：映射到新集合 ID，强制作为新记录插入
+    for r in &data.requests {
+        let mut nr = r.clone();
+        nr.id = 0;
+        nr.collection_id = nr.collection_id.and_then(|cid| coll_map.get(&cid).copied());
+        request_repo::save_request(&guard.0, nr)?;
+    }
+
     Ok(())
 }
 
