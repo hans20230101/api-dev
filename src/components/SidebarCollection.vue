@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useCollectionStore } from '@/stores/collection'
 import { useTabsStore } from '@/stores/tabs'
 import { methodTagType } from '@/utils'
@@ -17,6 +17,8 @@ interface TreeNode {
   id: number
   parentId: number | null
   method?: string
+  /** 顶层集合 id：集合节点为其所属顶层集合；请求节点为其父集合的顶层集合；未归类为 null */
+  topId: number | null
   children?: TreeNode[]
 }
 
@@ -25,11 +27,19 @@ const tabsStore = useTabsStore()
 
 const treeData = computed<TreeNode[]>(() => {
   const map = new Map<number, TreeNode>()
-  store.collections.forEach(c =>
-    map.set(c.id, { key: `c-${c.id}`, name: c.name, kind: 'collection', id: c.id, parentId: c.parent_id ?? null, children: [] }),
-  )
   const roots: TreeNode[] = []
-  const orphanNode: TreeNode = { key: 'orphan', name: '未归类请求', kind: 'orphan', id: 0, parentId: null, children: [] }
+  // 先计算每个集合的顶层祖先 id，用于限制拖放范围为同一顶层集合内
+  const topOf = new Map<number, number>()
+  const resolveTop = (c: { id: number; parent_id?: number | null }, seen = new Set<number>()): number => {
+    if (topOf.has(c.id)) return topOf.get(c.id)!
+    if (c.parent_id == null || seen.has(c.id)) { topOf.set(c.id, c.id); return c.id }
+    const parent = store.collections.find(p => p.id === c.parent_id)
+    const top = parent ? resolveTop(parent, new Set([...seen, c.id])) : c.id
+    topOf.set(c.id, top)
+    return top
+  }
+  store.collections.forEach(c => map.set(c.id, { key: `c-${c.id}`, name: c.name, kind: 'collection', id: c.id, parentId: c.parent_id ?? null, topId: resolveTop(c), children: [] }))
+  const orphanNode: TreeNode = { key: 'orphan', name: '未归类请求', kind: 'orphan', id: 0, parentId: null, topId: null, children: [] }
   store.collections.forEach(c => {
     const node = map.get(c.id)!
     if (c.parent_id != null && map.has(c.parent_id)) {
@@ -47,6 +57,7 @@ const treeData = computed<TreeNode[]>(() => {
       id: r.id,
       parentId: r.collection_id ?? null,
       method: r.method,
+      topId: parent ? parent.topId : null,
     }
     if (parent) {
       parent.children!.push(node)
@@ -189,6 +200,57 @@ function isActive(node: TreeNode) {
   if (node.kind === 'collection') return store.selectedCollectionId === node.id
   return false
 }
+
+// ===== 拖放：请求节点可拖动，仅允许放到同一顶层集合下的其它集合（或未归类）中 =====
+const dragOverKey = ref<string | null>(null)
+// 拖动中的请求所属顶层集合 id；null 表示未归类请求，可放入任意集合
+let dragTopId: number | null | undefined
+
+function isDropTarget(node: TreeNode) {
+  return node.kind === 'collection' || node.kind === 'orphan'
+}
+
+// 目标集合是否与拖动请求同属一个顶层集合
+function canDropInto(node: TreeNode): boolean {
+  if (node.kind === 'orphan') return true
+  if (dragTopId === undefined) return false
+  return dragTopId === null ? true : node.topId === dragTopId
+}
+
+function onDragStart(e: DragEvent, node: TreeNode) {
+  if (node.kind !== 'request') return
+  e.dataTransfer!.setData('application/x-request-id', String(node.id))
+  e.dataTransfer!.effectAllowed = 'move'
+  dragTopId = node.topId
+}
+
+function onDragOver(e: DragEvent, node: TreeNode) {
+  if (!isDropTarget(node) || !canDropInto(node)) return
+  e.preventDefault()
+  e.dataTransfer!.dropEffect = 'move'
+  dragOverKey.value = node.key
+}
+
+function onDragLeave(node: TreeNode) {
+  if (dragOverKey.value === node.key) dragOverKey.value = null
+}
+
+async function onDrop(e: DragEvent, node: TreeNode) {
+  dragOverKey.value = null
+  if (!isDropTarget(node) || !canDropInto(node)) return
+  dragTopId = undefined
+  e.preventDefault()
+  const id = Number(e.dataTransfer!.getData('application/x-request-id'))
+  if (!id) return
+  const targetCollectionId = node.kind === 'collection' ? node.id : null
+  try {
+    await store.moveRequest(id, targetCollectionId)
+    ElMessage.success(`已移动到「${node.name}」`)
+  } catch (err) {
+    console.error('移动请求失败:', err)
+    ElMessage.error(`移动失败: ${err}`)
+  }
+}
 </script>
 
 <template>
@@ -227,7 +289,15 @@ function isActive(node: TreeNode) {
         style="padding: 6px;"
       >
         <template #default="{ data }">
-          <span class="node" :class="{ active: isActive(data) }">
+          <span
+            class="node"
+            :class="{ active: isActive(data), 'drop-target': dragOverKey === data.key }"
+            :draggable="data.kind === 'request'"
+            @dragstart="(e: DragEvent) => onDragStart(e, data)"
+            @dragover="(e: DragEvent) => onDragOver(e, data)"
+            @dragleave="onDragLeave(data)"
+            @drop="(e: DragEvent) => onDrop(e, data)"
+          >
             <el-icon v-if="data.kind === 'orphan'" class="node-icon"><Files /></el-icon>
             <el-icon v-else-if="data.kind === 'collection'" class="node-icon"><Folder /></el-icon>
             <el-tag v-else size="small" :type="methodTagType(data.method || 'GET')" effect="plain">
@@ -307,5 +377,15 @@ function isActive(node: TreeNode) {
 .ops-trigger { visibility: hidden; }
 .node:hover .ops-trigger { visibility: visible; }
 .node.active .node-name { color: #409eff; font-weight: 600; }
+
+/* 拖放：请求节点可拖动，集合/未归类节点悬停时高亮为放置目标 */
+.node[draggable='true'] { cursor: grab; }
+.node.drop-target {
+  outline: 1px dashed var(--el-color-primary);
+  outline-offset: -1px;
+  border-radius: 4px;
+  background: var(--el-color-primary-light-9);
+}
+
 .empty { color: #909399; text-align: center; padding: 20px 0; font-size: 12px; }
 </style>

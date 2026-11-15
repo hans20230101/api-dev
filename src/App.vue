@@ -86,7 +86,7 @@ async function menuNewCollection() {
 
 function menuAbout() {
   ElMessageBox.alert(
-    'API 教研接口测试工具<br/>版本 0.3.0<br/>支持集合管理、环境变量、请求调试与自动化测试',
+    'API-DEV<br/>版本 0.4.0<br/>支持集合管理、环境变量、请求调试与自动化测试',
     '关于软件',
     { dangerouslyUseHTMLString: true, confirmButtonText: '确定' },
   ).catch(() => {})

@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "API 教研接口测试工具",
-  "version": "0.3.0",
+  "productName": "API-DEV",
+  "version": "0.4.0",
   "identifier": "com.ham.api-dev",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -14,7 +14,7 @@
       {
         "label": "main",
         "create": false,
-        "title": "API 教研接口测试工具",
+        "title": "API-DEV",
         "width": 1280,
         "height": 820,
         "minWidth": 960,

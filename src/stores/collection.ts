@@ -113,6 +113,18 @@ export const useCollectionStore = defineStore('collection', {
       await this.loadRequests()
       return saved
     },
+    // 拖拽移动请求到目标集合；targetCollectionId 为 null 表示移到「未归类请求」
+    async moveRequest(id: number, targetCollectionId: number | null) {
+      const tabs = useTabsStore()
+      // 优先使用已打开选项卡的编辑副本，避免拖拽覆盖未保存的修改
+      const req = tabs.tabs.find(t => t.id === id) ?? await GetRequest(id)
+      if (req.collection_id === targetCollectionId) return
+      req.collection_id = targetCollectionId
+      const saved = await SaveRequest(req)
+      tabs.syncSaved(saved)
+      await this.loadRequests()
+      return saved
+    },
     async removeRequest(id: number) {
       await DeleteRequest(id)
       useTabsStore().closeTab(id)

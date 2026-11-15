@@ -140,7 +140,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("API 教研接口测试工具")
+        .tooltip("API-DEV")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app),
             "quit" => {
@@ -201,7 +201,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
             "main",
             tauri::WebviewUrl::App("index.html".into()),
         )
-        .title("API 教研接口测试工具")
+        .title("API-DEV")
         .inner_size(1280.0, 820.0),
     };
 
@@ -209,6 +209,11 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
         Some(dir) => builder.data_directory(dir),
         None => builder,
     };
+
+    // 关闭 Tauri 的 OS 级文件拖放监听，否则 WebView2 中 HTML5 拖放事件全部被拦截
+    // （侧边栏请求拖拽移动依赖 webview 内部的 dragstart/dragover/drop 事件）
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let builder = builder.disable_drag_drop_handler();
 
     builder.build()?;
     Ok(())
