@@ -11,7 +11,7 @@ import { useCollectionStore } from '@/stores/collection'
 import { useEnvironmentStore } from '@/stores/environment'
 import { useThemeStore } from '@/stores/theme'
 import { useLayoutStore } from '@/stores/layout'
-import { ImportAll, SyncThemeChecks } from '@/api/wails'
+import { ImportAll, SyncThemeChecks, CheckUpdate, DownloadAndInstallUpdate } from '@/api/wails'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
@@ -86,10 +86,47 @@ async function menuNewCollection() {
 
 function menuAbout() {
   ElMessageBox.alert(
-    'API-DEV<br/>版本 0.4.0<br/>支持集合管理、环境变量、请求调试与自动化测试',
+    'api-dev<br/>版本 v0.4.1<br/>支持集合管理、环境变量、请求调试与自动化测试',
     '关于软件',
     { dangerouslyUseHTMLString: true, confirmButtonText: '确定' },
   ).catch(() => {})
+}
+
+async function menuCheckUpdate() {
+  const loading = ElMessage({ message: '正在检查更新…', duration: 0 })
+  let info
+  try {
+    info = await CheckUpdate()
+  } catch (e) {
+    loading.close()
+    ElMessage.error(`检查更新失败: ${e}`)
+    return
+  }
+  loading.close()
+  if (!info.has_update) {
+    ElMessage.success(`已是最新版本（v${info.current}）`)
+    return
+  }
+  const notes = info.notes ? `<br/>更新说明：${info.notes}` : ''
+  try {
+    await ElMessageBox.confirm(
+      `当前版本 v${info.current}，最新版本 v${info.latest}${notes}<br/>是否下载并安装最新版本？`,
+      '发现新版本',
+      { dangerouslyUseHTMLString: true, confirmButtonText: '下载并安装', cancelButtonText: '暂不更新', type: 'success' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  const downloading = ElMessage({ message: '正在下载最新版本…', duration: 0 })
+  try {
+    await DownloadAndInstallUpdate(info.download_url)
+    // 成功时后端会启动安装程序并退出应用，一般不会走到这里
+    downloading.close()
+    ElMessage.success('下载完成，安装程序已启动')
+  } catch (e) {
+    downloading.close()
+    ElMessage.error(`下载或安装失败: ${e}`)
+  }
 }
 
 function menuAboutAuthor() {
@@ -106,6 +143,7 @@ onMounted(async () => {
     switch (event.payload) {
       case 'menu://new-collection': menuNewCollection(); break
       case 'menu://import-collection': onImport(); break
+      case 'menu://check-update': menuCheckUpdate(); break
       case 'menu://about': menuAbout(); break
       case 'menu://request-settings': requestSettingsVisible.value = true; break
       case 'menu://about-author': menuAboutAuthor(); break

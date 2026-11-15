@@ -107,9 +107,17 @@ async function addRequest(collectionId: number | null) {
 
 async function duplicateRequest(node: TreeNode) {
   try {
-    await store.duplicateRequest(node.id)
+    const defaultName = `${node.name} (副本)`
+    const { value } = await ElMessageBox.prompt('请输入副本名称（留空使用默认名称）', '复制请求', {
+      inputValue: defaultName,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+    // 输入为空时由 store 回落到默认名称
+    await store.duplicateRequest(node.id, value)
     ElMessage.success('已复制')
   } catch (e) {
+    if (e === 'cancel' || e === 'close') return
     console.error('复制请求失败:', e)
     ElMessage.error(`复制失败: ${e}`)
   }

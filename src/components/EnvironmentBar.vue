@@ -66,7 +66,7 @@ defineEmits<{ (e: 'import'): void }>()
 
 <template>
   <div class="topbar">
-    <span style="font-weight: 600; font-size: 14px;">API-DEV</span>
+    <span style="font-weight: 600; font-size: 14px;">api-dev</span>
     <span style="flex: 1;"></span>
     <span style="color: var(--muted);">环境：</span>
     <el-select

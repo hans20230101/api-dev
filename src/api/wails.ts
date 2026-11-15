@@ -116,3 +116,21 @@ export function SetRequestTimeout(timeoutSecs: number): Promise<void> {
 }
 
 export type { models } from './models'
+
+// ===== 检查更新 =====
+
+export interface UpdateInfo {
+  current: string
+  latest: string
+  notes: string | null
+  download_url: string
+  has_update: boolean
+}
+
+export function CheckUpdate(): Promise<UpdateInfo> {
+  return invoke('check_update')
+}
+
+export function DownloadAndInstallUpdate(url: string): Promise<string> {
+  return invoke('download_and_install_update', { url })
+}

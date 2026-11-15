@@ -521,3 +521,88 @@ fn collect_collections_recursive(
         }
     }
 }
+
+// ===== 检查更新 =====
+
+/// 更新清单地址：部署后指向存放最新版本信息的 JSON（字段见 UpdateManifest）。
+/// 未部署更新服务前保持该占位地址，前端会提示“检查更新失败”。
+const UPDATE_MANIFEST_URL: &str = "https://github.com/hans20230101/api-dev/releases/latest/download/latest.json";
+
+#[derive(serde::Deserialize)]
+struct UpdateManifest {
+    /// 最新版本号，如 "0.5.0"
+    version: String,
+    /// 更新说明（可选）
+    #[serde(default)]
+    notes: Option<String>,
+    /// 最新安装包下载地址
+    download_url: String,
+}
+
+#[derive(serde::Serialize)]
+pub struct UpdateInfo {
+    pub current: String,
+    pub latest: String,
+    pub notes: Option<String>,
+    pub download_url: String,
+    /// latest 是否高于 current
+    pub has_update: bool,
+}
+
+/// 比较语义化版本号 a 与 b：a<b 返回 -1，相等 0，a>b 返回 1
+fn cmp_version(a: &str, b: &str) -> i32 {
+    let parse = |s: &str| -> Vec<u64> {
+        s.trim_start_matches('v')
+            .split('.')
+            .map(|p| p.trim().parse::<u64>().unwrap_or(0))
+            .collect()
+    };
+    let (va, vb) = (parse(a), parse(b));
+    for i in 0..va.len().max(vb.len()) {
+        let x = va.get(i).copied().unwrap_or(0);
+        let y = vb.get(i).copied().unwrap_or(0);
+        if x != y { return if x < y { -1 } else { 1 } }
+    }
+    0
+}
+
+/// 检查更新：拉取更新清单并比较版本
+#[tauri::command]
+pub async fn check_update() -> Result<UpdateInfo, String> {
+    let manifest: UpdateManifest = reqwest::get(UPDATE_MANIFEST_URL)
+        .await
+        .map_err(|e| format!("无法访问更新服务: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("更新清单解析失败: {e}"))?;
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let has_update = cmp_version(&current, &manifest.version) < 0;
+    Ok(UpdateInfo {
+        current,
+        latest: manifest.version,
+        notes: manifest.notes,
+        download_url: manifest.download_url,
+        has_update,
+    })
+}
+
+/// 下载最新安装包并启动安装程序（NSIS 安装向导），随后退出当前应用
+#[tauri::command]
+pub async fn download_and_install_update(app: tauri::AppHandle, url: &str) -> Result<String, String> {
+    let bytes = reqwest::get(url)
+        .await
+        .map_err(|e| format!("下载失败: {e}"))?
+        .bytes()
+        .await
+        .map_err(|e| format!("下载失败: {e}"))?;
+    let file_name = url.rsplit('/').next().unwrap_or("api-dev-setup.exe");
+    let setup_path = std::env::temp_dir().join(format!("api-dev-update-{file_name}"));
+    std::fs::write(&setup_path, &bytes).map_err(|e| format!("写入安装包失败: {e}"))?;
+    // 独立启动安装程序；失败时仍返回路径，前端可提示用户手动运行
+    let launched = std::process::Command::new(&setup_path)
+        .spawn()
+        .map_err(|e| format!("启动安装程序失败: {e}"))?;
+    let _ = launched;
+    app.exit(0);
+    Ok(setup_path.to_string_lossy().into_owned())
+}

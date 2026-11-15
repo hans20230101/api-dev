@@ -92,12 +92,12 @@ export const useCollectionStore = defineStore('collection', {
       useTabsStore().renameTab(id, name)
       await this.loadRequests()
     },
-    async duplicateRequest(id: number) {
+    async duplicateRequest(id: number, name?: string) {
       const original = await GetRequest(id)
       const duplicate = {
         ...original,
         id: 0,
-        name: `${original.name} (副本)`,
+        name: name?.trim() || `${original.name} (副本)`,
       }
       const saved = await SaveRequest(duplicate)
       useTabsStore().openTab(saved)

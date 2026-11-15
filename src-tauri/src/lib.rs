@@ -54,6 +54,8 @@ pub fn run() {
             commands::sync_theme_checks,
             commands::get_request_timeout,
             commands::set_request_timeout,
+            commands::check_update,
+            commands::download_and_install_update,
         ])
         .setup(|app| {
             commands::setup(app)?;
@@ -97,10 +99,11 @@ fn setup_menu(app: &tauri::App) -> tauri::Result<()> {
     let settings_menu = Submenu::with_id(app, "settings", "⚙ 设置", true)?;
     settings_menu.append_items(&[&theme_menu, &request_settings, &debug_item])?;
 
+    let check_update = MenuItem::with_id(app, "menu://check-update", "🔄 检查更新", true, None::<&str>)?;
     let about = MenuItem::with_id(app, "menu://about", "ℹ 关于软件", true, None::<&str>)?;
     let about_author = MenuItem::with_id(app, "menu://about-author", "👤 关于作者", true, None::<&str>)?;
     let help_menu = Submenu::with_id(app, "help", "❓ 帮助", true)?;
-    help_menu.append_items(&[&about, &about_author])?;
+    help_menu.append_items(&[&check_update, &about, &about_author])?;
 
     let menu = Menu::with_items(app, &[&file_menu, &settings_menu, &help_menu])?;
     app.set_menu(menu)?;
@@ -140,7 +143,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
     let mut tray = TrayIconBuilder::with_id("main-tray")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .tooltip("API-DEV")
+        .tooltip("api-dev")
         .on_menu_event(|app, event| match event.id.as_ref() {
             "show" => show_main_window(app),
             "quit" => {
@@ -201,7 +204,7 @@ fn create_main_window(app: &tauri::App) -> tauri::Result<()> {
             "main",
             tauri::WebviewUrl::App("index.html".into()),
         )
-        .title("API-DEV")
+        .title("api-dev")
         .inner_size(1280.0, 820.0),
     };
 
