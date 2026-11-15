@@ -126,8 +126,8 @@ html, body, #app {
   overflow: auto;
 }
 
-.request-area { flex: 0 0 auto; border-bottom: 1px solid var(--border); }
-.response-area { flex: 1 1 auto; }
+/* 高度由分割面板的容器控制，两个区域各自填满自己的面板 */
+.request-area, .response-area { height: 100%; }
 
 .panel-title {
   font-size: 12px;

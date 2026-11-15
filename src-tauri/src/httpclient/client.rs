@@ -266,7 +266,7 @@ fn parse_filename(headers: &HashMap<String, String>) -> Option<String> {
 /// 执行一次 HTTP 请求，返回结构化响应与原始响应字节。
 /// 异步实现：发送阶段可被取消令牌中断（取消即丢弃 Future，断开连接）；
 /// 同步上下文（批量测试）请调用 [`send`] 包装。
-pub async fn send_async(req: &Request, vars: &[Variable]) -> (Response, Vec<u8>) {
+pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> (Response, Vec<u8>) {
     let var_map = build_var_map(vars);
     let raw_url = apply_vars(&req.url, &var_map);
     let final_url = build_url_with_params(&raw_url, &req.params, &var_map);
@@ -295,7 +295,7 @@ pub async fn send_async(req: &Request, vars: &[Variable]) -> (Response, Vec<u8>)
     };
 
     let client = match reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(timeout_secs))
         .danger_accept_invalid_certs(true)
         .build()
     {
@@ -430,8 +430,8 @@ pub async fn send_async(req: &Request, vars: &[Variable]) -> (Response, Vec<u8>)
 }
 
 /// 同步包装：在 tauri 异步运行时上执行 [`send_async`]，供批量测试等同步上下文调用
-pub fn send(req: &Request, vars: &[Variable]) -> (Response, Vec<u8>) {
-    tauri::async_runtime::block_on(send_async(req, vars))
+pub fn send(req: &Request, vars: &[Variable], timeout_secs: u64) -> (Response, Vec<u8>) {
+    tauri::async_runtime::block_on(send_async(req, vars, timeout_secs))
 }
 
 /// 用户取消请求时返回的占位响应（error 非空，不会进入响应缓存）

@@ -109,7 +109,6 @@ async function saveFile() {
 
 <template>
   <div class="response-area">
-    <div class="panel-title">响应</div>
     <div v-if="sending" class="empty">请求发送中...</div>
     <div v-else-if="!response" class="empty">点击「发送」查看响应</div>
     <div v-else style="padding: 10px;">
@@ -118,6 +117,7 @@ async function saveFile() {
       </div>
       <template v-else>
         <div style="display: flex; gap: 16px; margin-bottom: 8px; align-items: center;">
+          <span>响应</span>
           <el-tag :type="statusTagType(response.status_code)">状态 {{ response.status_code }}</el-tag>
           <span>耗时 {{ response.time_ms }} ms</span>
           <span>响应大小 {{ response.resp_size }} B</span>
@@ -139,7 +139,7 @@ async function saveFile() {
               <p>二进制内容（{{ response.resp_size }} B），无法以文本显示。</p>
               <el-button type="primary" @click="saveFile">保存文件</el-button>
             </div>
-            <CodeViewer v-else :content="response.body" max-height="320px" />
+            <CodeViewer v-else :content="response.body" fill />
           </el-tab-pane>
           <el-tab-pane label="Headers">
             <div v-for="(v, k) in response.headers" :key="k" class="kv-row mono">
@@ -154,6 +154,43 @@ async function saveFile() {
 </template>
 
 <style scoped>
+/* 响应区自适应分割面板高度：内容纵向弹性布局，Body 查看器随面板拉伸填满 */
+.response-area {
+  display: flex;
+  flex-direction: column;
+}
+.response-area > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.response-area :deep(.el-tabs) {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.response-area :deep(.el-tabs__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+/* tab 面板本身也弹性撑满，Body 查看器边框才能紧贴分割面板边界伸缩 */
+.response-area :deep(.el-tabs__content > .el-tab-pane) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 压缩响应区内部 tabs（Body/Headers）标题尺寸：高度由 --el-tabs-header-height 变量控制，覆盖变量才生效 */
+.response-area :deep(.el-tabs) { --el-tabs-header-height: 28px; }
+.response-area :deep(.el-tabs__header) { margin: 0 0 6px; }
+.response-area :deep(.el-tabs__item) {
+  padding: 0 12px;
+  font-size: 11px;
+}
+
 .empty { color: #909399; text-align: center; padding: 30px 0; }
 .binary-hint { color: #909399; text-align: center; padding: 40px 0; }
 .binary-hint p { margin-bottom: 12px; }

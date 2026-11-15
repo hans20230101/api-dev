@@ -107,4 +107,12 @@ export function SyncThemeChecks(mode: string): Promise<void> {
   return invoke('sync_theme_checks', { mode })
 }
 
+export function GetRequestTimeout(): Promise<number> {
+  return invoke('get_request_timeout')
+}
+
+export function SetRequestTimeout(timeoutSecs: number): Promise<void> {
+  return invoke('set_request_timeout', { timeoutSecs })
+}
+
 export type { models } from './models'

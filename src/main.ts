@@ -22,3 +22,14 @@ useThemeStore().init()
 
 // 默认禁用 WebView 右键菜单（保持桌面应用观感；F12 调试入口见「设置→调试」）
 window.addEventListener('contextmenu', e => e.preventDefault())
+
+// 禁用 F12 / Ctrl+Shift+I / Ctrl+Shift+J / Ctrl+Shift+C 快捷键调出调试框
+window.addEventListener('keydown', e => {
+  if (
+    e.key === 'F12' ||
+    (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'J' || e.key === 'C'))
+  ) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+})

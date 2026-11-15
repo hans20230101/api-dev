@@ -6,6 +6,8 @@ import { CopyDocument } from '@element-plus/icons-vue'
 const props = defineProps<{
   content: string
   maxHeight?: string
+  /** 为 true 时忽略 maxHeight，弹性填满父容器（父容器需为固定高度的 flex 布局） */
+  fill?: boolean
 }>()
 
 const lines = computed(() => props.content.split('\n'))
@@ -22,14 +24,14 @@ async function copyContent() {
 </script>
 
 <template>
-  <div class="code-viewer">
+  <div class="code-viewer" :class="{ fill }">
     <div class="code-toolbar">
       <span class="line-count">{{ lineNumbers.length }} 行</span>
       <el-button size="small" link @click="copyContent">
         <el-icon><CopyDocument /></el-icon>&nbsp;复制
       </el-button>
     </div>
-    <div class="code-body" :style="{ maxHeight: maxHeight || '320px' }">
+    <div class="code-body" :style="fill ? undefined : { maxHeight: maxHeight || '320px' }">
       <div class="line-numbers">
         <div v-for="num in lineNumbers" :key="num" class="line-number">{{ num }}</div>
       </div>
@@ -44,6 +46,20 @@ async function copyContent() {
   border-radius: 4px;
   overflow: hidden;
   background: #fafafa;
+}
+
+/* 填满模式：随父容器（分割面板区域）弹性拉伸 */
+.code-viewer.fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.code-viewer.fill .code-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
 }
 
 .code-toolbar {

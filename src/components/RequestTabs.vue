@@ -38,6 +38,22 @@ function onTabRemove(name: number | string) {
 /* 选项卡内容区由外部的请求编辑器/响应面板承担，隐藏组件自带的内容区 */
 .tabs-bar :deep(.el-tabs__content) { display: none; }
 .tabs-bar :deep(.el-tabs__header) { margin: 0; }
+
+/* 进一步压缩：Element Plus 的高度由 --el-tabs-header-height 变量统一控制，覆盖该变量才能生效 */
+.tabs-bar :deep(.el-tabs) { --el-tabs-header-height: 28px; }
+.tabs-bar :deep(.el-tabs__item) {
+  padding: 0 10px;
+  font-size: 11px;
+}
+/* 关闭图标尺寸适配紧凑布局 */
+.tabs-bar :deep(.el-tabs__item .el-icon) {
+  width: 11px;
+  height: 11px;
+  font-size: 11px;
+}
+.tabs-bar :deep(.el-tabs__nav-next),
+.tabs-bar :deep(.el-tabs__nav-prev) { height: 28px; line-height: 28px; }
+
 .tab-label { display: inline-flex; align-items: center; gap: 4px; max-width: 180px; }
 .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dirty-dot {

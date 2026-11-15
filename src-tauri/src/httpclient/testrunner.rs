@@ -135,11 +135,11 @@ fn values_equal(got: &str, expected: &str) -> bool {
 }
 
 /// 批量运行请求并返回测试结果
-pub fn run_collection(requests: &[Request], vars: &[Variable]) -> Vec<TestResult> {
+pub fn run_collection(requests: &[Request], vars: &[Variable], timeout_secs: u64) -> Vec<TestResult> {
     requests
         .iter()
         .map(|r| {
-            let (resp, _) = client::send(r, vars);
+            let (resp, _) = client::send(r, vars, timeout_secs);
             let mut tr = TestResult {
                 request_id: r.id,
                 name: r.name.clone(),

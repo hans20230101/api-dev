@@ -498,7 +498,45 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </template>
 
 <style scoped>
+/* 请求区自适应分割面板高度：纵向弹性布局，让编辑器随面板拉伸填满 */
+.request-area {
+  display: flex;
+  flex-direction: column;
+}
+.request-area > div {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.request-area > div > .el-tabs {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.request-area :deep(.el-tabs__content) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+/* tab 面板本身也弹性撑满，json 编辑框边框才能紧贴分割面板边界伸缩 */
+.request-area :deep(.el-tabs__content > .el-tab-pane) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .empty { color: #909399; text-align: center; padding: 40px 0; }
+
+/* 压缩请求区内部 tabs（Params/Headers/Body）标题尺寸：高度由 --el-tabs-header-height 变量控制，覆盖变量才生效 */
+.request-area :deep(.el-tabs) { --el-tabs-header-height: 28px; }
+.request-area :deep(.el-tabs__header) { margin: 0 0 6px; }
+.request-area :deep(.el-tabs__item) {
+  padding: 0 12px;
+  font-size: 11px;
+}
+
 /* 只读请求名称：与 small 输入框视觉对齐 */
 .req-name {
   font-size: 13px;
@@ -531,12 +569,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   font-size: 12px;
   color: #909399;
 }
-/* JSON 编辑器：左侧行号栏 + 等宽文本域，滚动同步 */
+/* JSON 编辑器：左侧行号栏 + 等宽文本域，高度自适应分割面板（弹性拉伸，最小 160px） */
 .code-editor {
   display: flex;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
-  height: 220px;
+  flex: 1 1 auto;
+  min-height: 160px;
   overflow: hidden;
 }
 .code-gutter {

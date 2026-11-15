@@ -13,6 +13,8 @@ pub struct AppState {
     pub response_cache: Mutex<ResponseCache>,
     /// 进行中请求的取消令牌：按请求 id 注册，取消时触发中断
     pub cancel_tokens: Mutex<HashMap<i64, CancellationToken>>,
+    /// 请求超时时间（秒），由「设置→请求设置」面板修改，默认 30s
+    pub timeout_secs: Mutex<u64>,
 }
 
 type Guard<'a> = std::sync::MutexGuard<'a, Db>;
@@ -58,6 +60,34 @@ impl ResponseCache {
 
 fn db_lock<'a>(state: &'a State<AppState>) -> Result<Guard<'a>, String> {
     state.db.lock().map_err(|e| format!("数据库锁错误: {e}"))
+}
+
+/// 读取当前请求超时时间（秒）；锁中毒时回退默认 30s
+pub fn timeout_secs(state: &State<AppState>) -> u64 {
+    state
+        .timeout_secs
+        .lock()
+        .map(|t| *t)
+        .unwrap_or(DEFAULT_TIMEOUT_SECS)
+}
+
+const DEFAULT_TIMEOUT_SECS: u64 = 30;
+
+/// 获取请求超时时间（秒），「设置→请求设置」面板打开时读取
+#[tauri::command]
+pub fn get_request_timeout(state: State<AppState>) -> Result<u64, String> {
+    Ok(timeout_secs(&state))
+}
+
+/// 设置请求超时时间（秒），钳制在 1–3600
+#[tauri::command]
+pub fn set_request_timeout(state: State<AppState>, timeout_secs: u64) -> Result<(), String> {
+    let t = timeout_secs.clamp(1, 3600);
+    *state
+        .timeout_secs
+        .lock()
+        .map_err(|e| format!("超时设置锁错误: {e}"))? = t;
+    Ok(())
 }
 
 /// 返回已解析的数据库目录（供窗口 WebView 数据目录回退使用）
@@ -197,6 +227,8 @@ pub async fn send_request(
         env_repo::get_active_variables(&guard.0)?
     };
 
+    let timeout_secs = timeout_secs(&state);
+
     let token = CancellationToken::new();
     {
         let mut tokens = state
@@ -209,7 +241,7 @@ pub async fn send_request(
     // 取消即丢弃进行中的请求 Future（断开连接），返回占位响应
     let (mut resp, bytes) =
         match token
-            .run_until_cancelled(client::send_async(&request, &vars))
+            .run_until_cancelled(client::send_async(&request, &vars, timeout_secs))
             .await
         {
             Some(result) => result,
@@ -285,7 +317,7 @@ pub fn run_collection(
         return Ok(Vec::new());
     }
     let vars = env_repo::get_active_variables(&guard.0)?;
-    Ok(testrunner::run_collection(&reqs, &vars))
+    Ok(testrunner::run_collection(&reqs, &vars, timeout_secs(&state)))
 }
 
 // ===== 导入导出 =====
@@ -463,6 +495,7 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         data_dir,
         response_cache: Mutex::new(ResponseCache::new()),
         cancel_tokens: Mutex::new(HashMap::new()),
+        timeout_secs: Mutex::new(30),
     });
     Ok(())
 }

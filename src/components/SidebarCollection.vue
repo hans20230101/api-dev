@@ -276,9 +276,34 @@ function isActive(node: TreeNode) {
 </template>
 
 <style scoped>
-.node { display: flex; align-items: center; gap: 6px; width: 100%; overflow: hidden; }
-.node-icon { color: #e6a23c; }
-.node-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 树节点行高：默认 26px 偏挤，统一到 30px 让请求名称呼吸感更好 */
+.sidebar :deep(.el-tree-node__content) { height: 30px; }
+
+.node { display: flex; align-items: center; gap: 6px; width: 100%; overflow: hidden; padding-right: 4px; }
+.node-icon { color: #e6a23c; flex-shrink: 0; font-size: 14px; }
+
+/* 请求行：method 标签定宽等宽字体，名称列对齐；标签字号压缩 */
+.node :deep(.el-tag) {
+  flex-shrink: 0;
+  width: 52px;
+  justify-content: center;
+  font-size: 10px;
+  font-family: Consolas, Monaco, monospace;
+  padding: 0;
+}
+
+/* 请求名称：13px 常规灰度、hover 加深、选中主色加粗 */
+.node-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.node:hover .node-name { color: var(--el-color-primary); }
+
 .ops-trigger { visibility: hidden; }
 .node:hover .ops-trigger { visibility: visible; }
 .node.active .node-name { color: #409eff; font-weight: 600; }

@@ -52,6 +52,8 @@ pub fn run() {
             commands::write_export_file,
             commands::import_all,
             commands::sync_theme_checks,
+            commands::get_request_timeout,
+            commands::set_request_timeout,
         ])
         .setup(|app| {
             commands::setup(app)?;
@@ -71,7 +73,7 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
-/// 顶层原生菜单栏：「文件」(新建集合/导入集合/退出)、「设置」(主题/调试)、「帮助」(关于)。
+/// 顶层原生菜单栏：「文件」(新建集合/导入集合/退出)、「设置」(主题/调试)、「帮助」(关于软件)。
 /// 动作类菜单项通过 `menu://` 事件转发给前端执行；主题项为勾选项，
 /// 前端每次切换主题后调用 sync_theme_checks 命令同步勾选状态。
 fn setup_menu(app: &tauri::App) -> tauri::Result<()> {
@@ -91,12 +93,14 @@ fn setup_menu(app: &tauri::App) -> tauri::Result<()> {
 
     // 调试：打开/关闭 WebView 前端 F12 调试界面
     let debug_item = MenuItem::with_id(app, "menu://debug", "🛠 调试", true, None::<&str>)?;
+    let request_settings = MenuItem::with_id(app, "menu://request-settings", "⏱ 请求设置", true, None::<&str>)?;
     let settings_menu = Submenu::with_id(app, "settings", "⚙ 设置", true)?;
-    settings_menu.append_items(&[&theme_menu, &debug_item])?;
+    settings_menu.append_items(&[&theme_menu, &request_settings, &debug_item])?;
 
-    let about = MenuItem::with_id(app, "menu://about", "ℹ 关于", true, None::<&str>)?;
+    let about = MenuItem::with_id(app, "menu://about", "ℹ 关于软件", true, None::<&str>)?;
+    let about_author = MenuItem::with_id(app, "menu://about-author", "👤 关于作者", true, None::<&str>)?;
     let help_menu = Submenu::with_id(app, "help", "❓ 帮助", true)?;
-    help_menu.append_items(&[&about])?;
+    help_menu.append_items(&[&about, &about_author])?;
 
     let menu = Menu::with_items(app, &[&file_menu, &settings_menu, &help_menu])?;
     app.set_menu(menu)?;
