@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox, type TreeInstance } from 'element-plus'
 import { useCollectionStore } from '@/stores/collection'
 import { useTabsStore } from '@/stores/tabs'
 import { methodTagType } from '@/utils'
-import { ElMessage, ElMessageBox } from 'element-plus'
 import { ExportAll, ExportCollection, WriteExportFile } from '@/api/wails'
 import { save } from '@tauri-apps/plugin-dialog'
 import { Upload, CopyDocument } from '@element-plus/icons-vue'
@@ -24,6 +24,43 @@ interface TreeNode {
 
 const store = useCollectionStore()
 const tabsStore = useTabsStore()
+const treeRef = ref<TreeInstance>()
+// 用户主动折叠的集合 id 集合。默认所有集合都是展开的（首次加载 / 新建 / 导入均展开），
+// 只有用户手动折叠过的集合保持折叠。
+const collapsedIds = ref(new Set<number>())
+function onNodeExpand(data: TreeNode) {
+  if (data.kind === 'collection') {
+    collapsedIds.value.delete(data.id)
+  }
+}
+
+function onNodeCollapse(data: TreeNode) {
+  if (data.kind === 'collection') {
+    collapsedIds.value.add(data.id)
+  }
+}
+
+// 应展开的节点 key：除被用户折叠的集合外全部展开；未归类请求有子项时也展开。
+const expandedKeys = computed(() => {
+  const keys: string[] = []
+  if (store.requests.some(r => r.collection_id == null)) keys.push('orphan')
+  store.collections.forEach(c => {
+    if (!collapsedIds.value.has(c.id)) keys.push(`c-${c.id}`)
+  })
+  return keys
+})
+
+watch(() => store.collections.map(c => c.id), (ids: number[]) => {
+  // 清理已删除集合的折叠记录，避免编号复用后误折叠
+  const current = new Set(ids)
+  const stale = Array.from(collapsedIds.value).filter(id => !current.has(id))
+  if (stale.length) {
+    const next = new Set(collapsedIds.value)
+    stale.forEach(id => next.delete(id))
+    collapsedIds.value = next
+  }
+}, { immediate: true })
+
 
 const treeData = computed<TreeNode[]>(() => {
   const map = new Map<number, TreeNode>()
@@ -287,13 +324,17 @@ async function onDrop(e: DragEvent, node: TreeNode) {
     <div style="flex: 1; overflow: auto;">
       <el-tree
         v-if="store.collections.length"
+        ref="treeRef"
         :data="treeData"
         node-key="key"
         :props="{ label: 'name', children: 'children' }"
-        :default-expand-all="true"
+        :default-expanded-keys="expandedKeys"
+        :auto-expand-parent="false"
         :expand-on-click-node="false"
         highlight-current
         @node-click="onNodeClick"
+        @node-expand="onNodeExpand"
+        @node-collapse="onNodeCollapse"
         style="padding: 6px;"
       >
         <template #default="{ data }">
