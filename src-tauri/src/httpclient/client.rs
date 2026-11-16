@@ -297,6 +297,10 @@ pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .danger_accept_invalid_certs(true)
+        // 禁用环境变量代理：reqwest 默认读取 HTTP_PROXY/HTTPS_PROXY 并把所有请求发给系统代理，
+        // 导致 127.0.0.1 / 内网 IP 等本应直连的地址在有代理的机器上无法访问
+        // （浏览器与 Postman 有 bypass list 会跳过这些地址，reqwest 没有）。
+        .no_proxy()
         .build()
     {
         Ok(c) => c,

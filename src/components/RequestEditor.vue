@@ -16,11 +16,10 @@ const tabs = useTabsStore()
 // 当前激活选项卡中的请求（各选项卡编辑内容互不影响）
 const req = computed(() => tabs.activeTab)
 
-/** 当前类型对应的编辑数据源（json/raw 有行数与工具栏操作） */
+/** 当前类型对应的编辑数据源（raw 有行数与工具栏操作） */
 const activeBody = computed(() => {
   const r = req.value
   if (!r) return ''
-  if (r.body_type === 'json') return r.body_json ?? ''
   if (r.body_type === 'raw') return r.body_raw ?? ''
   return r.body
 })
@@ -36,7 +35,6 @@ const rawContentTypes = [
 ]
 const bodyTypes = [
   { label: 'none', value: 'none' },
-  { label: 'json', value: 'json' },
   { label: 'form', value: 'form' },
   { label: 'raw', value: 'raw' },
   { label: 'form-data', value: 'form-data' },
@@ -44,12 +42,17 @@ const bodyTypes = [
 
 /**
  * 切换 Body 类型（零搬运）：各类型数据永久驻留各自字段
- * （json→body_json、form→body_form、raw→body_raw、form-data/none→body），
+ * （form→body_form、raw→body_raw、form-data/none→body），
  * 切换只改 body_type，编辑内容随字段驻留，来回切换互不覆盖。
  */
 function switchBodyType(type: string) {
   const r = req.value
   if (!r || type === r.body_type) return
+  // 兼容旧数据：body_type 为 json 的请求统一迁入 raw（内容搬进 body_raw，Content-Type 选 json）
+  if (r.body_type === 'json' && !(r.body_raw ?? '').trim() && (r.body_json ?? '').trim()) {
+    r.body_raw = r.body_json
+    r.raw_content_type = 'json'
+  }
   r.body_type = type
 }
 
@@ -85,7 +88,6 @@ function finishRename() {
 function activeBodyText(): string {
   const r = req.value
   if (!r) return ''
-  if (r.body_type === 'json') return r.body_json ?? ''
   if (r.body_type === 'raw') return r.body_raw ?? ''
   return r.body
 }
@@ -104,17 +106,14 @@ async function copyBody() {
 function formatJson() {
   const r = req.value
   if (!r) return
-  const target = r.body_type === 'raw' ? 'body_raw' : 'body_json'
   const text = activeBodyText()
   if (!text.trim()) {
-    if (target === 'body_json') r.body_json = '{\n  \n}'
-    else r.body_raw = '{\n  \n}'
+    r.body_raw = '{\n  \n}'
     return
   }
   try {
     const pretty = JSON.stringify(JSON.parse(text), null, 2)
-    if (target === 'body_json') r.body_json = pretty
-    else r.body_raw = pretty
+    r.body_raw = pretty
     ElMessage.success('已格式化')
   } catch (e) {
     ElMessage.error(`JSON 格式错误: ${e}`)
@@ -422,31 +421,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           >
             <el-radio-button v-for="b in bodyTypes" :key="b.value" :value="b.value">{{ b.label }}</el-radio-button>
           </el-radio-group>
-          <template v-if="req.body_type === 'json'">
-            <div class="body-toolbar">
-              <span class="line-count">{{ bodyLineCount }} 行</span>
-              <span style="flex: 1;"></span>
-              <el-button size="small" link @click="formatJson">
-                <el-icon><MagicStick /></el-icon>&nbsp;格式化
-              </el-button>
-              <el-button size="small" link @click="copyBody">
-                <el-icon><CopyDocument /></el-icon>&nbsp;复制
-              </el-button>
-            </div>
-            <div class="code-editor">
-              <div ref="gutterRef" class="code-gutter mono">
-                <div v-for="n in bodyLineCount" :key="n" class="code-ln">{{ n }}</div>
-              </div>
-              <textarea
-                v-model="req.body_json"
-                class="code-textarea mono"
-                spellcheck="false"
-                placeholder="JSON 请求体，支持 {{var}}"
-                @scroll="syncGutter"
-              ></textarea>
-            </div>
-          </template>
-          <template v-else-if="req.body_type === 'raw'">
+          <template v-if="req.body_type === 'raw'">
             <div class="body-toolbar">
               <span class="raw-ct-label">类型</span>
               <el-select
