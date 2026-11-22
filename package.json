@@ -1,7 +1,7 @@
 {
   "name": "api-dev",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.6.0",
   "type": "module",
   "scripts": {
     "dev": "cross-env TMP=E:/ai-test/api-dev/.build-tmp TEMP=E:/ai-test/api-dev/.build-tmp TMPDIR=E:/ai-test/api-dev/.build-tmp vite",

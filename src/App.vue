@@ -86,7 +86,7 @@ async function menuNewCollection() {
 
 function menuAbout() {
   ElMessageBox.alert(
-    'api-dev<br/>版本 v0.4.1<br/>支持集合管理、环境变量、请求调试与自动化测试',
+    'api-dev<br/>版本 v0.6.0<br/>支持集合管理、环境变量、请求调试与自动化测试',
     '关于软件',
     { dangerouslyUseHTMLString: true, confirmButtonText: '确定' },
   ).catch(() => {})
