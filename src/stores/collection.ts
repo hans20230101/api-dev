@@ -67,10 +67,22 @@ export const useCollectionStore = defineStore('collection', {
         raw_content_type: 'text',
         body: '',
         tests_script: '',
+        auth: {
+          auth_type: 'none',
+          token: '',
+          username: '',
+          password: '',
+          key: '',
+          value: '',
+          location: 'header',
+        },
       }
       const saved = await SaveRequest(payload)
       this.selectedCollectionId = collectionId
-      useTabsStore().openTab(saved)
+      const tabs = useTabsStore()
+      tabs.openTab(saved)
+      // 标记为新建态：各 KV 编辑器默认显示一行空白行，首次保存后转为修改态
+      tabs.newIds.push(saved.id)
       await this.loadRequests()
       return saved
     },

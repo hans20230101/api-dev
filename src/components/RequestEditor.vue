@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useCollectionStore } from '@/stores/collection'
 import { useRuntimeStore } from '@/stores/runtime'
 import { useTabsStore } from '@/stores/tabs'
 import { ElMessage } from 'element-plus'
-import { CopyDocument, MagicStick, Edit } from '@element-plus/icons-vue'
+import { CopyDocument, MagicStick, Edit, Check } from '@element-plus/icons-vue'
 import KVEditor from './KVEditor.vue'
 import FormDataEditor from './FormDataEditor.vue'
 import type { models } from '@/api/models'
@@ -15,6 +15,28 @@ const tabs = useTabsStore()
 
 // 当前激活选项卡中的请求（各选项卡编辑内容互不影响）
 const req = computed(() => tabs.activeTab)
+
+// 是否新建请求（尚未保存过）：新建时 KV 编辑器默认显示一行空白行，修改时不显示
+const isNewReq = computed(() => !!req.value && tabs.newIds.includes(req.value.id))
+
+// ---------- 外层页签自动定位 ----------
+// 打开/切换请求或改变方法时按方法落位：
+// GET/DELETE/PATCH/HEAD → Params，PUT/POST → Body。
+// 之后用户手动切换页签不受影响（watcher 只在请求 id 或方法变化时触发）
+
+const activePane = ref('params')
+watch(
+  () => {
+    const r = req.value
+    return r ? `${r.id}|${r.method}` : null
+  },
+  () => {
+    const r = req.value
+    if (!r) return
+    activePane.value = r.method === 'PUT' || r.method === 'POST' ? 'body' : 'params'
+  },
+  { immediate: true },
+)
 
 /** 当前类型对应的编辑数据源（raw 有行数与工具栏操作） */
 const activeBody = computed(() => {
@@ -39,6 +61,20 @@ const bodyTypes = [
   { label: 'raw', value: 'raw' },
   { label: 'form-data', value: 'form-data' },
 ]
+
+// ---------- Auth 行级编辑锁 ----------
+// 与 KVEditor 一致：有值的字段默认锁定（防误触泄露凭证），点「修改」解锁，改完点 ✓ 重新锁定
+const authUnlocked = reactive(new Set<string>())
+function authFieldValue(f: keyof models.Auth): string {
+  return (req.value?.auth?.[f] as string) ?? ''
+}
+function isAuthLocked(f: keyof models.Auth): boolean {
+  return authFieldValue(f).trim() !== '' && !authUnlocked.has(f)
+}
+function toggleAuthEdit(f: keyof models.Auth) {
+  if (authUnlocked.has(f)) authUnlocked.delete(f)
+  else authUnlocked.add(f)
+}
 
 /**
  * 切换 Body 类型（零搬运）：各类型数据永久驻留各自字段
@@ -328,11 +364,13 @@ watch(
         parsed.push({ key, value, enable: true })
       }
     }
-    // 只保留 URL 中无法体现的禁用行（禁用参数不拼进地址）；
+    // 保留 URL 中无法体现的行：禁用行不拼进地址；空 key 占位行（KVEditor 为空表
+    // 自动补的行）同样不在地址里，若丢弃会在切回选项卡时被 KVEditor 重新补回，
+    // 行对象重建导致与保存快照不一致而误标「未保存」，故与禁用行一并原样保留；
     // 在地址里删掉的启用参数，表格行同步删除，避免下次编辑又“复活”回地址
     const known = new Set(pairs.map(([k]) => k))
     for (const kv of r.params) {
-      if (kv.key && !kv.enable && !known.has(kv.key)) parsed.push({ ...kv })
+      if ((!kv.key || !kv.enable) && !known.has(kv.key)) parsed.push({ ...kv })
     }
     if (JSON.stringify(parsed) !== JSON.stringify(r.params)) {
       syncing = true
@@ -405,14 +443,101 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
         <el-button v-else type="primary" size="small" @click="send">发送</el-button>
         <el-button size="small" @click="save">保存</el-button>
       </div>
-      <el-tabs>
-        <el-tab-pane label="Params">
-          <KVEditor :items="req.params" />
+      <el-tabs v-model="activePane">
+        <el-tab-pane label="Params" name="params">
+          <KVEditor :items="req.params" :placeholder="isNewReq" />
         </el-tab-pane>
-        <el-tab-pane label="Headers">
-          <KVEditor :items="req.headers" />
+        <el-tab-pane label="Auth" name="auth">
+          <div class="auth-form">
+            <el-select v-model="req.auth.auth_type" size="small" class="auth-type">
+              <el-option label="No Auth" value="none" />
+              <el-option label="Bearer Token" value="bearer" />
+              <el-option label="Basic Auth" value="basic" />
+              <el-option label="API Key" value="api_key" />
+            </el-select>
+            <template v-if="req.auth.auth_type === 'bearer'">
+              <div class="auth-row">
+                <el-input
+                  v-model="req.auth.token"
+                  size="small"
+                  placeholder="Token，支持变量替换"
+                  class="auth-field"
+                  :disabled="isAuthLocked('token')"
+                />
+                <el-icon class="auth-edit" @click="toggleAuthEdit('token')">
+                  <Check v-if="!isAuthLocked('token')" />
+                  <Edit v-else />
+                </el-icon>
+              </div>
+            </template>
+            <template v-else-if="req.auth.auth_type === 'basic'">
+              <div class="auth-row">
+                <el-input
+                  v-model="req.auth.username"
+                  size="small"
+                  placeholder="Username，支持变量替换"
+                  class="auth-field"
+                  :disabled="isAuthLocked('username')"
+                />
+                <el-icon class="auth-edit" @click="toggleAuthEdit('username')">
+                  <Check v-if="!isAuthLocked('username')" />
+                  <Edit v-else />
+                </el-icon>
+              </div>
+              <div class="auth-row">
+                <el-input
+                  v-model="req.auth.password"
+                  size="small"
+                  show-password
+                  placeholder="Password，支持变量替换"
+                  class="auth-field"
+                  :disabled="isAuthLocked('password')"
+                />
+                <el-icon class="auth-edit" @click="toggleAuthEdit('password')">
+                  <Check v-if="!isAuthLocked('password')" />
+                  <Edit v-else />
+                </el-icon>
+              </div>
+            </template>
+            <template v-else-if="req.auth.auth_type === 'api_key'">
+              <div class="auth-row">
+                <el-input
+                  v-model="req.auth.key"
+                  size="small"
+                  placeholder="Key（如 x-api-key），支持变量替换"
+                  class="auth-field"
+                  :disabled="isAuthLocked('key')"
+                />
+                <el-icon class="auth-edit" @click="toggleAuthEdit('key')">
+                  <Check v-if="!isAuthLocked('key')" />
+                  <Edit v-else />
+                </el-icon>
+              </div>
+              <div class="auth-row">
+                <el-input
+                  v-model="req.auth.value"
+                  size="small"
+                  placeholder="Value，支持变量替换"
+                  class="auth-field"
+                  :disabled="isAuthLocked('value')"
+                />
+                <el-icon class="auth-edit" @click="toggleAuthEdit('value')">
+                  <Check v-if="!isAuthLocked('value')" />
+                  <Edit v-else />
+                </el-icon>
+              </div>
+              <el-radio-group v-model="req.auth.location" size="small">
+                <el-radio-button value="header">Header</el-radio-button>
+                <el-radio-button value="query">Query</el-radio-button>
+              </el-radio-group>
+            </template>
+            <div v-else class="auth-hint">此请求不使用认证</div>
+          </div>
         </el-tab-pane>
-        <el-tab-pane label="Body">
+        <el-tab-pane label="Headers" name="headers">
+          <KVEditor :items="req.headers" :placeholder="isNewReq" />
+        </el-tab-pane>
+        <el-tab-pane label="Body" name="body">
           <el-radio-group
             :model-value="req.body_type"
             size="small"
@@ -457,13 +582,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div style="color: var(--muted); margin-bottom: 6px;">
               form 模式：以表单形式填写键值对，发送时以 application/x-www-form-urlencoded 提交
             </div>
-            <KVEditor :items="formItems" />
+            <KVEditor :items="formItems" :placeholder="isNewReq" />
           </template>
           <template v-else-if="req.body_type === 'form-data'">
             <div style="color: var(--muted); margin-bottom: 6px;">
               form-data 模式：每一行可切换「文本 / 文件」，文件行发送时以 multipart/form-data 上传
             </div>
-            <FormDataEditor :items="fdItems" />
+            <FormDataEditor :items="fdItems" :placeholder="isNewReq" />
           </template>
           <div v-else style="color: var(--muted);">该请求没有请求体</div>
         </el-tab-pane>
@@ -503,6 +628,43 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 }
 
 .empty { color: #909399; text-align: center; padding: 40px 0; }
+
+/* Auth 页签：类型下拉 + 条件字段，纵向窄栏排布 */
+.auth-form {
+  padding: 8px 0;
+  max-width: 480px;
+}
+.auth-type {
+  width: 160px;
+  margin-bottom: 8px;
+  display: block;
+}
+.auth-field {
+  margin-bottom: 8px;
+}
+/* Auth 字段行：输入框 + 修改锁图标（有值默认锁定，与 KVEditor 一致） */
+.auth-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.auth-row .auth-field {
+  margin-bottom: 0;
+  flex: 1 1 auto;
+}
+.auth-edit {
+  margin-left: 6px;
+  color: #909399;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.auth-edit:hover {
+  color: var(--el-color-primary);
+}
+.auth-hint {
+  color: #909399;
+  font-size: 12px;
+}
 
 /* 压缩请求区内部 tabs（Params/Headers/Body）标题尺寸：高度由 --el-tabs-header-height 变量控制，覆盖变量才生效 */
 .request-area :deep(.el-tabs) { --el-tabs-header-height: 28px; }

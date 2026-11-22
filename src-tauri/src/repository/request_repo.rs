@@ -1,4 +1,4 @@
-use crate::models::{Kv, Request};
+use crate::models::{Auth, Kv, Request};
 use rusqlite::{params, Connection, OptionalExtension};
 
 fn now_str() -> String {
@@ -10,6 +10,15 @@ fn kv_to_json(kvs: &[Kv]) -> String {
 }
 
 fn json_to_kvs(s: &str) -> Vec<Kv> {
+    serde_json::from_str(s).unwrap_or_default()
+}
+
+fn auth_to_json(a: &Auth) -> String {
+    serde_json::to_string(a).unwrap_or_default()
+}
+
+/// 空串或坏 JSON（旧库默认值）回退到 Auth::default
+fn json_to_auth(s: &str) -> Auth {
     serde_json::from_str(s).unwrap_or_default()
 }
 
@@ -42,11 +51,12 @@ fn row_to_request(row: &rusqlite::Row) -> rusqlite::Result<Request> {
         tests_script: row.get(12)?,
         created_at: row.get(13)?,
         raw_content_type: row.get(14)?,
+        auth: json_to_auth(&row.get::<_, String>(15)?),
     })
 }
 
 const REQUEST_COLS: &str =
-    "id, collection_id, name, method, url, headers, params, body_type, body, body_json, body_form, body_raw, tests_script, created_at, raw_content_type";
+    "id, collection_id, name, method, url, headers, params, body_type, body, body_json, body_form, body_raw, tests_script, created_at, raw_content_type, auth_json";
 
 pub fn list_requests(conn: &Connection, collection_id: Option<i64>) -> Result<Vec<Request>, String> {
     let list: Vec<Request> = match collection_id {
@@ -88,11 +98,12 @@ pub fn get_request(conn: &Connection, id: i64) -> Result<Request, String> {
 pub fn save_request(conn: &Connection, mut r: Request) -> Result<Request, String> {
     let headers = kv_to_json(&r.headers);
     let params_json = kv_to_json(&r.params);
+    let auth_json = auth_to_json(&r.auth);
     // 前端请求对象内各类型数据永久驻留各自字段（body_json/body_form/body_raw/body），
     // 保存时全部原样入库，不做任何合并或清空——保证各类型编辑内容互不丢失
     if r.id > 0 {
         conn.execute(
-            "UPDATE requests SET collection_id=?, name=?, method=?, url=?, headers=?, params=?, body_type=?, body=?, body_json=?, body_form=?, body_raw=?, tests_script=?, raw_content_type=? WHERE id=?",
+            "UPDATE requests SET collection_id=?, name=?, method=?, url=?, headers=?, params=?, body_type=?, body=?, body_json=?, body_form=?, body_raw=?, tests_script=?, raw_content_type=?, auth_json=? WHERE id=?",
             params![
                 r.collection_id,
                 r.name,
@@ -107,6 +118,7 @@ pub fn save_request(conn: &Connection, mut r: Request) -> Result<Request, String
                 r.body_raw,
                 r.tests_script,
                 r.raw_content_type,
+                auth_json,
                 r.id
             ],
         )
@@ -114,7 +126,7 @@ pub fn save_request(conn: &Connection, mut r: Request) -> Result<Request, String
         Ok(r)
     } else {
         conn.execute(
-            "INSERT INTO requests (collection_id, name, method, url, headers, params, body_type, body, body_json, body_form, body_raw, tests_script, raw_content_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "INSERT INTO requests (collection_id, name, method, url, headers, params, body_type, body, body_json, body_form, body_raw, tests_script, raw_content_type, auth_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             params![
                 r.collection_id,
                 r.name,
@@ -128,7 +140,8 @@ pub fn save_request(conn: &Connection, mut r: Request) -> Result<Request, String
                 r.body_form,
                 r.body_raw,
                 r.tests_script,
-                r.raw_content_type
+                r.raw_content_type,
+                auth_json
             ],
         )
         .map_err(|e| e.to_string())?;

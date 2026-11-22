@@ -500,13 +500,6 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// 仅供探测/测试使用的数据库初始化入口
-pub fn init_db_for_test(
-    dir: &std::path::Path,
-) -> Result<Db, Box<dyn std::error::Error>> {
-    crate::db::init(dir)
-}
-
 /// 递归收集指定集合及其所有子集合
 fn collect_collections_recursive(
     collection_id: i64,
@@ -530,7 +523,7 @@ const UPDATE_MANIFEST_URL: &str = "https://github.com/hans20230101/api-dev/relea
 
 #[derive(serde::Deserialize)]
 struct UpdateManifest {
-    /// 最新版本号，如 "0.5.0"
+    /// 最新版本号，如 "0.6.0"
     version: String,
     /// 更新说明（可选）
     #[serde(default)]

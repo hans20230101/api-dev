@@ -8,6 +8,9 @@ export const useTabsStore = defineStore('tabs', {
     tabs: [] as models.Request[],
     activeTabId: null as number | null,
     snapshots: {} as Record<number, string>,
+    // 刚新建、尚未保存过的请求 id：新建时各 KV 编辑器默认显示一行空白行，
+    // 首次保存后即视为修改态（空白行不再自动出现）
+    newIds: [] as number[],
   }),
   getters: {
     activeTab(state): models.Request | null {
@@ -27,12 +30,13 @@ export const useTabsStore = defineStore('tabs', {
       const tab = this.tabs.find(t => t.id === id)
       return !!tab && JSON.stringify(tab) !== this.snapshots[id]
     },
-    // 保存成功后同步选项卡内容并清除未保存标记
+    // 保存成功后同步选项卡内容并清除未保存标记；同时退出「新建」态
     syncSaved(req: models.Request) {
       const tab = this.tabs.find(t => t.id === req.id)
       if (!tab) return
       Object.assign(tab, req)
       this.snapshots[req.id] = JSON.stringify(tab)
+      this.newIds = this.newIds.filter(x => x !== req.id)
     },
     renameTab(id: number, name: string) {
       const tab = this.tabs.find(t => t.id === id)
@@ -46,6 +50,7 @@ export const useTabsStore = defineStore('tabs', {
       if (idx < 0) return
       this.tabs.splice(idx, 1)
       delete this.snapshots[id]
+      this.newIds = this.newIds.filter(x => x !== id)
       if (this.activeTabId === id) {
         const next = this.tabs[Math.min(idx, this.tabs.length - 1)]
         this.activeTabId = next ? next.id : null

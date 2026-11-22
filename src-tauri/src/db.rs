@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS requests (
 	body_form TEXT NOT NULL DEFAULT '',
 	body_raw TEXT NOT NULL DEFAULT '',
 	raw_content_type TEXT NOT NULL DEFAULT 'text',
+	auth_json TEXT NOT NULL DEFAULT '',
 	tests_script TEXT NOT NULL DEFAULT '',
 	created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -99,7 +100,28 @@ pub fn init(data_dir: &std::path::Path) -> Result<Db, Box<dyn std::error::Error>
     conn.execute_batch(SCHEMA)?;
     migrate_requests_body_columns(&conn)?;
     migrate_requests_raw_content_type(&conn)?;
+    migrate_requests_auth(&conn)?;
     Ok(Db(conn))
+}
+
+/// 旧库升级：为 requests 补建 auth_json 列（新库建表时列已存在，ALTER 失败可忽略）
+fn migrate_requests_auth(conn: &Connection) -> Result<(), Box<dyn std::error::Error>> {
+    let exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('requests') WHERE name = 'auth_json'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .map(|n| n > 0)
+        .map_err(|e| e.to_string())?;
+    if !exists {
+        conn.execute(
+            "ALTER TABLE requests ADD COLUMN auth_json TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    Ok(())
 }
 
 /// 旧库升级：为 requests 补建 raw_content_type 列（新库建表时列已存在，ALTER 失败可忽略）

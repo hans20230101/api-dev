@@ -5,8 +5,10 @@ pub struct Kv {
     pub key: String,
     pub value: String,
     pub enable: bool,
-    /// form-data 行是否为文件项（value 存文件路径），旧数据无此字段时默认 None
-    #[serde(default)]
+    /// form-data 行是否为文件项（value 存文件路径），旧数据无此字段时默认 None；
+    /// None 时不序列化，避免输出 "file":null 与前端缺省行（无 file 键）在
+    /// JSON.stringify 快照比对中不相等，导致保存后页签误标「未保存」
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<bool>,
 }
 
@@ -34,8 +36,52 @@ pub struct Request {
     /// raw 类型的内容格式（text/json/xml/html/javascript），决定发送时的 Content-Type
     #[serde(default = "default_raw_content_type")]
     pub raw_content_type: String,
+    /// 认证配置；始终序列化为完整对象（非 Option），避免 null/缺失键在
+    /// 前端 JSON.stringify 快照比对中不对称而误标「未保存」
+    #[serde(default)]
+    pub auth: Auth,
     pub tests_script: String,
     pub created_at: Option<String>,
+}
+
+/// 请求认证配置：none 不认证；bearer/basic/api_key 发送时生成对应凭证
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Auth {
+    /// 认证类型：none / bearer / basic / api_key
+    #[serde(default)]
+    pub auth_type: String,
+    /// Bearer Token
+    #[serde(default)]
+    pub token: String,
+    /// Basic Auth 用户名
+    #[serde(default)]
+    pub username: String,
+    /// Basic Auth 密码
+    #[serde(default)]
+    pub password: String,
+    /// API Key 名称（如 x-api-key）
+    #[serde(default)]
+    pub key: String,
+    /// API Key 值
+    #[serde(default)]
+    pub value: String,
+    /// API Key 位置：header / query
+    #[serde(default)]
+    pub location: String,
+}
+
+impl Default for Auth {
+    fn default() -> Self {
+        Auth {
+            auth_type: "none".to_string(),
+            token: String::new(),
+            username: String::new(),
+            password: String::new(),
+            key: String::new(),
+            value: String::new(),
+            location: "header".to_string(),
+        }
+    }
 }
 
 /// raw 请求体默认按纯文本发送（旧数据无此字段时使用）

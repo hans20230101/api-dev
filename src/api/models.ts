@@ -21,6 +21,23 @@ export namespace models {
     created_at?: string | null
   }
 
+  export interface Auth {
+    /** 认证类型：none / bearer / basic / api_key */
+    auth_type: string
+    /** Bearer Token */
+    token: string
+    /** Basic Auth 用户名 */
+    username: string
+    /** Basic Auth 密码 */
+    password: string
+    /** API Key 名称（如 x-api-key） */
+    key: string
+    /** API Key 值 */
+    value: string
+    /** API Key 位置：header / query */
+    location: string
+  }
+
   export interface Request {
     id: number
     collection_id?: number | null
@@ -40,6 +57,8 @@ export namespace models {
     body_raw?: string
     /** raw 类型的内容格式（text/json/xml/html/javascript），决定发送时的 Content-Type */
     raw_content_type?: string
+    /** 认证配置 */
+    auth: Auth
     tests_script: string
     created_at?: string | null
   }

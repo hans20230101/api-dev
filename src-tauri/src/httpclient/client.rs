@@ -27,17 +27,20 @@ fn build_url_with_params(
         Err(_) => return raw_url.to_string(),
     };
     // 编辑器已把启用的参数同步拼进地址栏 query，这里只追加地址里还没有的键，
-    // 避免同一参数在 query 中出现两份；地址自带 query 的旧数据也能原样发送
+    // 避免同一参数在 query 中出现两份；地址自带 query 的旧数据也能原样发送。
+    // 注意：query_pairs_mut() 在无 query 时会初始化空 query（url 序列化为末尾 "?"），
+    // 部分服务端会拒绝带空 query 的请求，因此仅在确有参数要追加时才调用
     let existing: HashSet<String> = url.query_pairs().map(|(k, _)| k.into_owned()).collect();
-    {
+    let appends: Vec<(String, String)> = params
+        .iter()
+        .filter(|p| p.enable && !p.key.is_empty())
+        .map(|p| (apply_vars(&p.key, vars), apply_vars(&p.value, vars)))
+        .filter(|(k, _)| !existing.contains(k))
+        .collect();
+    if !appends.is_empty() {
         let mut qp = url.query_pairs_mut();
-        for p in params {
-            if p.enable && !p.key.is_empty() {
-                let key = apply_vars(&p.key, vars);
-                if !existing.contains(&key) {
-                    qp.append_pair(&key, &apply_vars(&p.value, vars));
-                }
-            }
+        for (k, v) in &appends {
+            qp.append_pair(k, v);
         }
     }
     url.to_string()
@@ -178,6 +181,56 @@ fn urlform_encode(s: &str) -> String {
     url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
 }
 
+/// 标准 Base64 编码（Basic Auth 用）；未引入 base64 crate，手写实现
+const B64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn base64_encode(data: &[u8]) -> String {
+    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        out.push(B64_ALPHABET[(n >> 18) as usize & 63] as char);
+        out.push(B64_ALPHABET[(n >> 12) as usize & 63] as char);
+        out.push(if chunk.len() > 1 { B64_ALPHABET[(n >> 6) as usize & 63] as char } else { '=' });
+        out.push(if chunk.len() > 2 { B64_ALPHABET[n as usize & 63] as char } else { '=' });
+    }
+    out
+}
+
+/// 根据认证配置生成需注入的 header 对（空 Vec 表示不注入）。
+/// 值与 basic 的用户名/密码均支持 {{var}} 变量替换
+fn auth_header_pairs(auth: &crate::models::Auth, vars: &HashMap<&str, &str>) -> Vec<(String, String)> {
+    match auth.auth_type.as_str() {
+        "bearer" if !auth.token.trim().is_empty() => {
+            vec![("Authorization".to_string(), format!("Bearer {}", apply_vars(auth.token.trim(), vars)))]
+        }
+        "basic" if !auth.username.is_empty() || !auth.password.is_empty() => {
+            let raw = format!("{}:{}", apply_vars(&auth.username, vars), apply_vars(&auth.password, vars));
+            vec![("Authorization".to_string(), format!("Basic {}", base64_encode(raw.as_bytes())))]
+        }
+        "api_key" if !auth.key.trim().is_empty() && auth.location != "query" && !auth.value.is_empty() => {
+            vec![(apply_vars(auth.key.trim(), vars), apply_vars(&auth.value, vars))]
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// api key 选择 query 位置时追加到地址末尾；同名键已存在则不追加。
+/// 必然追加一对参数，因此不会触发空 query（末尾悬空 "?"）问题
+fn append_auth_query(final_url: &str, key: &str, value: &str) -> String {
+    let mut u = match url::Url::parse(final_url) {
+        Ok(u) => u,
+        Err(_) => return final_url.to_string(),
+    };
+    if u.query_pairs().any(|(ek, _)| ek == key) {
+        return u.to_string();
+    }
+    u.query_pairs_mut().append_pair(key, value);
+    u.to_string()
+}
+
 fn try_pretty_json(s: &str) -> String {
     match serde_json::from_str::<serde_json::Value>(s) {
         Ok(v) => serde_json::to_string_pretty(&v).unwrap_or_else(|_| s.to_string()),
@@ -269,7 +322,15 @@ fn parse_filename(headers: &HashMap<String, String>) -> Option<String> {
 pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> (Response, Vec<u8>) {
     let var_map = build_var_map(vars);
     let raw_url = apply_vars(&req.url, &var_map);
-    let final_url = build_url_with_params(&raw_url, &req.params, &var_map);
+    let mut final_url = build_url_with_params(&raw_url, &req.params, &var_map);
+
+    // api key 选择 query 位置：在参数表追加之后写入地址
+    let auth_pairs = auth_header_pairs(&req.auth, &var_map);
+    if req.auth.auth_type == "api_key" && req.auth.location == "query"
+        && !req.auth.key.trim().is_empty() && !req.auth.value.is_empty()
+    {
+        final_url = append_auth_query(&final_url, &apply_vars(req.auth.key.trim(), &var_map), &apply_vars(&req.auth.value, &var_map));
+    }
 
     let method = match reqwest::Method::from_bytes(req.method.as_bytes()) {
         Ok(m) => m,
@@ -297,10 +358,6 @@ pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> 
     let client = match reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_secs))
         .danger_accept_invalid_certs(true)
-        // 禁用环境变量代理：reqwest 默认读取 HTTP_PROXY/HTTPS_PROXY 并把所有请求发给系统代理，
-        // 导致 127.0.0.1 / 内网 IP 等本应直连的地址在有代理的机器上无法访问
-        // （浏览器与 Postman 有 bypass list 会跳过这些地址，reqwest 没有）。
-        .no_proxy()
         .build()
     {
         Ok(c) => c,
@@ -313,8 +370,16 @@ pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> 
 
     for h in &req.headers {
         if h.enable && !h.key.is_empty() {
-            http_req = http_req.header(apply_vars(&h.key, &var_map), apply_vars(&h.value, &var_map));
+            let k = apply_vars(&h.key, &var_map);
+            // 认证头优先：Headers 中与认证生成的同名词跳过，避免出现两份 Authorization
+            if auth_pairs.iter().any(|(ak, _)| ak.eq_ignore_ascii_case(&k)) {
+                continue;
+            }
+            http_req = http_req.header(k, apply_vars(&h.value, &var_map));
         }
+    }
+    for (k, v) in &auth_pairs {
+        http_req = http_req.header(k, v);
     }
 
     let (body_bytes, content_type) = if req.body_type == "form-data" {
@@ -407,7 +472,7 @@ pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> 
                         content_type: resp_content_type,
                         is_binary: false,
                         filename,
-                        error: Some(format!("读取响应失败: {e}")),
+                        error: Some(format!("读取响应失败: {}", error_chain(&e))),
                     },
                     Vec::new(),
                 ),
@@ -426,11 +491,23 @@ pub async fn send_async(req: &Request, vars: &[Variable], timeout_secs: u64) -> 
                 content_type: None,
                 is_binary: false,
                 filename: None,
-                error: Some(format!("请求发送失败: {e}")),
+                error: Some(format!("请求发送失败: {}", error_chain(&e))),
             },
             Vec::new(),
         ),
     }
+}
+
+/// 拼接错误及其底层原因链：reqwest 顶层 Display 只有 "error sending request"，
+/// 连接被拒/超时/DNS 失败等真实原因藏在 source 链里，不透出无法定位网络问题
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut msg = e.to_string();
+    let mut src = e.source();
+    while let Some(s) = src {
+        msg.push_str(&format!(" <- {s}"));
+        src = s.source();
+    }
+    msg
 }
 
 /// 同步包装：在 tauri 异步运行时上执行 [`send_async`]，供批量测试等同步上下文调用
